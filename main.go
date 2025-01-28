@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	// owner          = flag.String("owner", "cli", "GitHub organization or user to scope attestation lookup by")
+	owner          = flag.String("owner", "cli", "GitHub organization or user to scope attestation lookup by")
 	artifactDigest = flag.String("artifact-digest", "", "The digest of the artifact")
 )
 
