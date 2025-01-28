@@ -42,7 +42,7 @@ func GetFromGitHub(ctx context.Context, digest string, org string, token string)
 	// var bundles [i]*bundle.Bundle
 	bundles := make([]*bundle.Bundle, len(attestations.Attestations))
 	for i, attestation := range attestations.Attestations {
-		json.Unmarshal(attestation.Bundle, &bundles[i])
+		err = json.Unmarshal(attestation.Bundle, &bundles[i])
 		if err != nil {
 			return nil, err
 		}
@@ -67,7 +67,7 @@ func ReadFromDir(ctx context.Context, dirPath string, digest string) ([]*bundle.
 	}
 
 	var bundles []*bundle.Bundle
-	json.Unmarshal(content, &bundles)
+	err = json.Unmarshal(content, &bundles)
 	if err != nil {
 		return nil, err
 	}
