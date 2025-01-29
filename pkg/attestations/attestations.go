@@ -2,88 +2,269 @@ package attestations
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
-	"encoding/base64"
-
+	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-github/v68/github"
-	"github.com/sigstore/sigstore-go/pkg/bundle"
-	"github.com/sigstore/sigstore-go/pkg/root"
-	"github.com/sigstore/sigstore-go/pkg/verify"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
+	"github.com/sigstore/cosign/v2/pkg/oci"
+	"github.com/sigstore/cosign/v2/pkg/oci/static"
+	sigstore "github.com/sigstore/sigstore-go/pkg/bundle"
 	// TODO: sigstore-go requires at least one transparency log entry for verification (see https://github.com/sigstore/sigstore-go/pull/288).
 	// GitHub's internal Fulcio instance doesn't use CT logs, so we use the GitHub CLI which is designed to work with this setup.
 	// We can revisit using sigstore-go directly if they add support for completely disabling transparency log verification.
-	// Keeping imports commented for reference
-	// "github.com/sigstore/sigstore-go/pkg/root"
-	// "github.com/sigstore/sigstore-go/pkg/verify"
 )
 
-// ParseOCIReference parses an OCI reference into its components
-func ParseOCIReference(ref string) (string, string, error) {
-	// Handle both full OCI reference and raw digest
-	if strings.HasPrefix(ref, "oci://") {
-		// Format: oci://ghcr.io/owner/repo@sha256:digest
+// Previous implementation using sigstore-go directly:
+/*
+func parseDigestFromOCIRef(ref string) string {
+	if strings.Contains(ref, "@") {
 		parts := strings.Split(ref, "@")
-		if len(parts) != 2 {
-			return "", "", fmt.Errorf("invalid OCI reference format: %s", ref)
-		}
-		return parts[0], parts[1], nil
+		return parts[len(parts)-1]
 	}
-	// If it's just a digest, return it as is
-	return "", ref, nil
+	return ref
 }
 
-func GetFromGitHub(ctx context.Context, artifactRef string, org string, token string) ([]*bundle.Bundle, error) {
-	if token == "" {
-		return nil, errors.New("\"token\" is missing")
-	}
-
-	if org == "" {
-		return nil, errors.New("\"org\" is missing")
-	}
-
-	_, digest, err := ParseOCIReference(artifactRef)
+func getTrustedRoot() ([]byte, error) {
+	cmd := exec.Command("gh", "attestation", "trusted-root")
+	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse artifact reference: %w", err)
+		return nil, fmt.Errorf("failed to get trusted root: %w", err)
 	}
 
-	client := github.NewClient(nil).WithAuthToken(token)
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
 
-	attestations, _, err := client.Organizations.ListAttestations(ctx, org, digest, nil)
-	if err != nil {
+		var trustedRoot map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &trustedRoot); err != nil {
+			continue
+		}
+
+		if cas, ok := trustedRoot["certificateAuthorities"].([]interface{}); ok {
+			for _, ca := range cas {
+				if caMap, ok := ca.(map[string]interface{}); ok {
+					if uri, ok := caMap["uri"].(string); ok && uri == "fulcio.githubapp.com" {
+						filteredRoot := map[string]interface{}{
+							"mediaType":              trustedRoot["mediaType"],
+							"certificateAuthorities": []interface{}{ca},
+						}
+						return json.Marshal(filteredRoot)
+					}
+				}
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("no trusted root found for fulcio.githubapp.com")
+}
+*/
+
+//go:embed testdata/github-trusted-root.json
+var GithubTrustedRoot []byte
+
+// gh trusted root structure
+type TrustedRoot struct {
+	CertificateAuthorities []struct {
+		Subject struct {
+			Organization string `json:"organization"`
+			CommonName   string `json:"commonName"`
+		} `json:"subject"`
+		URI       string `json:"uri"`
+		CertChain struct {
+			Certificates []struct {
+				RawBytes string `json:"rawBytes"`
+			} `json:"certificates"`
+		} `json:"certChain"`
+		ValidFor struct {
+			Start string `json:"start"`
+			End   string `json:"end,omitempty"`
+		} `json:"validFor"`
+	} `json:"certificateAuthorities"`
+}
+
+// config for verify
+type Options struct {
+	// expected certificate identity (e.g., GitHub Actions workflow URL)
+	CertIdentity string
+	// expected certificate issuer (e.g., GitHub Actions OIDC issuer)
+	CertIssuer string
+	// reduce output verbosity
+	Quiet bool
+}
+
+// retrieves and verifies attestations for a gh container image
+func GetFromGitHub(ctx context.Context, artifactRef string, org string, token string, opts Options) ([]oci.Signature, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
+	if err := validateInputs(token, org, artifactRef); err != nil {
 		return nil, err
 	}
 
-	if len(attestations.Attestations) == 0 {
-		return nil, errors.New("no attestations found")
+	opts = setDefaultOptions(opts)
+
+	client := github.NewClient(nil).WithAuthToken(token)
+
+	ref, err := name.ParseReference(fmt.Sprintf("ghcr.io/%s/demo-gh-autogov-workflows@%s", org, artifactRef))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse reference: %w", err)
 	}
 
-	bundles := make([]*bundle.Bundle, 0, len(attestations.Attestations))
-	for _, attestation := range attestations.Attestations {
-		var b bundle.Bundle
-		if err := json.Unmarshal(attestation.Bundle, &b); err != nil {
-			decodedData, decodeErr := base64.StdEncoding.DecodeString(string(attestation.Bundle))
-			if decodeErr != nil {
-				return nil, fmt.Errorf("failed to parse bundle (tried JSON and base64): %w", err)
+	digest := ref.(name.Digest)
+
+	// get gh attestations
+	atts, _, err := client.Organizations.ListAttestations(ctx, org, digest.DigestStr(), &github.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list attestations: %w", err)
+	}
+
+	// create verify dir
+	cacheDir, err := os.MkdirTemp(os.TempDir(), "attestations-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cache directory: %w", err)
+	}
+	defer os.RemoveAll(cacheDir)
+
+	// write trusted root
+	trust := filepath.Join(cacheDir, "github-trusted-root.json")
+	if err := os.WriteFile(trust, GithubTrustedRoot, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write trusted root: %w", err)
+	}
+
+	// get and write manifest
+	manifest, err := crane.Manifest(ref.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get manifest: %w", err)
+	}
+
+	manifestPath := filepath.Join(cacheDir, "manifest.json")
+	if err := os.WriteFile(manifestPath, manifest, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write manifest: %w", err)
+	}
+
+	var sigs []oci.Signature
+	for i, att := range atts.Attestations {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			sig, err := verifyAttestation(ctx, att, manifestPath, trust, cacheDir, i, opts)
+			if err != nil {
+				return nil, err
 			}
-			if err := json.Unmarshal(decodedData, &b); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal decoded bundle: %w", err)
-			}
+			sigs = append(sigs, sig)
 		}
-		bundles = append(bundles, &b)
 	}
 
-	return bundles, nil
+	if len(sigs) == 0 {
+		return nil, fmt.Errorf("no valid signatures found")
+	}
+
+	return sigs, nil
 }
 
-func ReadFromDir(ctx context.Context, dirPath string, digest string) ([]*bundle.Bundle, error) {
+func validateInputs(token, org, artifactRef string) error {
+	switch {
+	case token == "":
+		return fmt.Errorf("github authentication token is required")
+	case org == "":
+		return fmt.Errorf("github organization name is required")
+	case artifactRef == "":
+		return fmt.Errorf("artifact reference is required")
+	default:
+		return nil
+	}
+}
+
+func setDefaultOptions(opts Options) Options {
+	if opts.CertIssuer == "" {
+		opts.CertIssuer = "https://token.actions.githubusercontent.com"
+	}
+	return opts
+}
+
+func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPath, trust, cacheDir string, index int, opts Options) (oci.Signature, error) {
+	// write attestation bundle
+	bundleData, err := att.Bundle.MarshalJSON()
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal attestation bundle: %w", err)
+	}
+
+	bundlePath := filepath.Join(cacheDir, fmt.Sprintf("att_%d.json", index))
+	if err := os.WriteFile(bundlePath, bundleData, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write attestation bundle: %w", err)
+	}
+
+	// parse bundle for statement first to get predicate type
+	b := sigstore.Bundle{}
+	if err := b.UnmarshalJSON(bundleData); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal bundle: %w", err)
+	}
+
+	// Get predicate type for better logging
+	var statement struct {
+		PredicateType string `json:"predicateType"`
+	}
+	if err := json.Unmarshal(b.GetDsseEnvelope().Payload, &statement); err != nil {
+		return nil, fmt.Errorf("failed to parse statement: %w", err)
+	}
+
+	// cosign verify config
+	verifyCmd := verify.VerifyBlobAttestationCommand{
+		KeyOpts: options.KeyOpts{
+			BundlePath:      bundlePath,
+			NewBundleFormat: true,
+		},
+		CertVerifyOptions: options.CertVerifyOptions{
+			CertOidcIssuer: opts.CertIssuer,
+			CertIdentity:   opts.CertIdentity,
+		},
+		IgnoreSCT:           true,
+		UseSignedTimestamps: true,
+		TrustedRootPath:     trust,
+		IgnoreTlog:          true,
+	}
+
+	if !opts.Quiet {
+		fmt.Printf("Verifying attestation %d (%s)...\n", index+1, statement.PredicateType)
+	}
+
+	// verify attestation
+	if err := verifyCmd.Exec(ctx, manifestPath); err != nil {
+		return nil, fmt.Errorf("failed to verify attestation: %w", err)
+	}
+
+	if !opts.Quiet {
+		fmt.Printf("✓ Attestation %d verified successfully\n", index+1)
+		fmt.Println("---")
+	}
+
+	// create signature from attestation
+	sig, err := static.NewSignature(
+		b.GetDsseEnvelope().Payload,
+		string(b.GetDsseEnvelope().Signatures[0].Sig),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create signature: %w", err)
+	}
+
+	return sig, nil
+}
+
+func ReadFromDir(ctx context.Context, dirPath string, digest string) ([]oci.Signature, error) {
 	if digest == "" {
-		return nil, errors.New("\"digest\" is missing")
+		return nil, fmt.Errorf("digest is required")
 	}
 
 	if dirPath == "" {
@@ -96,31 +277,48 @@ func ReadFromDir(ctx context.Context, dirPath string, digest string) ([]*bundle.
 		return nil, err
 	}
 
-	// Split JSON lines and parse each one
+	// split and parse json
 	lines := strings.Split(string(content), "\n")
-	bundles := make([]*bundle.Bundle, 0, len(lines))
+	sigs := make([]oci.Signature, 0, len(lines))
 
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		var b bundle.Bundle
-		if err := json.Unmarshal([]byte(line), &b); err != nil {
+
+		var bundle struct {
+			PayloadType string `json:"payloadType"`
+			Payload     string `json:"payload"`
+			Signatures  []struct {
+				Sig string `json:"sig"`
+			} `json:"signatures"`
+		}
+		if err := json.Unmarshal([]byte(line), &bundle); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal bundle: %w", err)
 		}
-		bundles = append(bundles, &b)
+
+		// create signature
+		sig, err := static.NewSignature(
+			[]byte(bundle.Payload),
+			bundle.Signatures[0].Sig,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create signature: %w", err)
+		}
+
+		sigs = append(sigs, sig)
 	}
 
-	return bundles, nil
+	return sigs, nil
 }
 
-func WriteToDir(ctx context.Context, dirPath string, digest string, bundles []*bundle.Bundle) error {
+func WriteToDir(ctx context.Context, dirPath string, digest string, sigs []oci.Signature) error {
 	if digest == "" {
-		return errors.New("\"digest\" is missing")
+		return fmt.Errorf("digest is required")
 	}
 
-	if bundles == nil {
-		return errors.New("\"bundles\" is missing")
+	if sigs == nil {
+		return fmt.Errorf("signatures are required")
 	}
 
 	if dirPath == "" {
@@ -135,113 +333,46 @@ func WriteToDir(ctx context.Context, dirPath string, digest string, bundles []*b
 	filename := digestToFileName(digest)
 	filepath := filepath.Join(dirPath, filename)
 
-	// Write each bundle as a separate JSON line
+	// write signature as separate json line
 	var lines []string
-	for _, b := range bundles {
+	for _, sig := range sigs {
+		payload, err := sig.Payload()
+		if err != nil {
+			return fmt.Errorf("failed to get payload: %w", err)
+		}
+
+		signature, err := sig.Signature()
+		if err != nil {
+			return fmt.Errorf("failed to get signature: %w", err)
+		}
+
+		b := struct {
+			PayloadType string `json:"payloadType"`
+			Payload     string `json:"payload"`
+			Signatures  []struct {
+				Sig string `json:"sig"`
+			} `json:"signatures"`
+		}{
+			PayloadType: "application/vnd.in-toto+json",
+			Payload:     string(payload),
+			Signatures: []struct {
+				Sig string `json:"sig"`
+			}{
+				{Sig: string(signature)},
+			},
+		}
+
 		line, err := json.Marshal(b)
 		if err != nil {
 			return fmt.Errorf("failed to marshal bundle: %w", err)
 		}
 		lines = append(lines, string(line))
 	}
-	content := []byte(strings.Join(lines, "\n"))
 
-	if err := os.WriteFile(filepath, content, 0600); err != nil {
-		return err
-	}
-
-	return nil
+	return os.WriteFile(filepath, []byte(strings.Join(lines, "\n")), 0644)
 }
 
-func Verify(ctx context.Context, digest string, bundles []*bundle.Bundle, trustedRootJSON []byte, expectedIssuer string, expectedSAN string) error {
-	trustedRoot, err := root.NewTrustedRootFromJSON(trustedRootJSON)
-	if err != nil {
-		return fmt.Errorf("failed to parse trusted root: %w", err)
-	}
-	trustedMaterial := root.TrustedMaterialCollection{trustedRoot}
-
-	verifierConfig := []verify.VerifierOption{
-		verify.WithSignedCertificateTimestamps(0), // Set to 0 since GitHub's Fulcio doesn't use CT logs
-		verify.WithObserverTimestamps(1),          // Required for timestamp verification
-		verify.WithTransparencyLog(0),             // Set to 0 since GitHub's Fulcio doesn't use transparency logs
-	}
-
-	verifier, err := verify.NewSignedEntityVerifier(trustedMaterial, verifierConfig...)
-	if err != nil {
-		return fmt.Errorf("failed to create verifier: %w", err)
-	}
-
-	if expectedIssuer == "" {
-		expectedIssuer = "https://token.actions.githubusercontent.com"
-	}
-	if expectedSAN == "" {
-		expectedSAN = ".*" // Default to accepting any SAN
-	}
-
-	certID, err := verify.NewShortCertificateIdentity(expectedIssuer, "", expectedSAN, "")
-	if err != nil {
-		return fmt.Errorf("failed to create certificate identity: %w", err)
-	}
-
-	identityPolicies := []verify.PolicyOption{
-		verify.WithCertificateIdentity(certID),
-	}
-
-	digestAlgorithm, digestHash, err := ParseDigest(digest)
-	if err != nil {
-		return fmt.Errorf("failed to parse digest: %w", err)
-	}
-
-	artifactPolicy := verify.WithArtifactDigest(digestAlgorithm, digestHash)
-	policyBuilder := verify.NewPolicy(artifactPolicy, identityPolicies...)
-
-	for _, bundle := range bundles {
-		if _, err := verifier.Verify(bundle, policyBuilder); err != nil {
-			return fmt.Errorf("failed to verify bundle: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func ParseDigest(rawDigest string) (string, []byte, error) {
-	// split the digest into algorithm and hash
-	algorithm, digest, found := strings.Cut(rawDigest, ":")
-	if !found {
-		return "", nil, errors.New("invalid digest")
-	}
-
-	return algorithm, []byte(digest), nil
-}
-
-// Transform a digest to a valid filename
+// transform digest to file
 func digestToFileName(digest string) string {
-	return fmt.Sprintf("%s.json", strings.Replace(digest, ":", "-", 1))
-}
-
-// Add this function to help with testing
-func SaveTestData(ctx context.Context, attestations []*bundle.Bundle, trustedRootJSON []byte) error {
-	// Create testdata directory if it doesn't exist
-	if err := os.MkdirAll("testdata", 0755); err != nil {
-		return fmt.Errorf("failed to create testdata directory: %w", err)
-	}
-
-	// Save trusted root JSON
-	if err := os.WriteFile("testdata/trusted_root.json", trustedRootJSON, 0644); err != nil {
-		return fmt.Errorf("failed to save trusted root JSON: %w", err)
-	}
-
-	// Save each attestation bundle
-	for i, att := range attestations {
-		bundleJSON, err := json.MarshalIndent(att, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal attestation %d: %w", i+1, err)
-		}
-		filename := fmt.Sprintf("testdata/attestation_%d.json", i+1)
-		if err := os.WriteFile(filename, bundleJSON, 0644); err != nil {
-			return fmt.Errorf("failed to save attestation %d: %w", i+1, err)
-		}
-	}
-
-	return nil
+	return fmt.Sprintf("testdata/%s.json", strings.Replace(digest, ":", "-", 1))
 }
