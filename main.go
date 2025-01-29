@@ -14,60 +14,13 @@ import (
 	"strings"
 
 	"github.com/cli/go-gh/v2"
-	// TODO: Investigate why sigstore-go module is not verifying GitHub attestations correctly
-	// Keeping imports commented for reference
-	// "context"
-	// "encoding/json"
-	// "os/exec"
-	// "github.com/liatrio/tag-autogov-attestation-verifier/pkg/attestations"
 )
 
-func main() {
-	owner := flag.String("owner", "", "The owner of the repository")
-	artifactDigest := flag.String("artifact-digest", "", "The digest of the artifact to verify")
-	flag.Parse()
+// TODO: sigstore-go requires at least one transparency log entry for verification (see https://github.com/sigstore/sigstore-go/pull/288).
+// GitHub's internal Fulcio instance doesn't use CT logs, so we use the GitHub CLI which is designed to work with this setup.
+// We can revisit using sigstore-go directly if they add support for completely disabling transparency log verification.
 
-	if *owner == "" || *artifactDigest == "" {
-		fmt.Println("Error: owner and artifact-digest are required")
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	// Extract just the digest part if full OCI URL is provided
-	digest := *artifactDigest
-	if strings.HasPrefix(digest, "oci://") {
-		parts := strings.Split(digest, "@")
-		if len(parts) == 2 {
-			digest = parts[1]
-		}
-	}
-
-	// Use go-gh to verify the attestation
-	stdout, stderr, err := gh.Exec("attestation", "verify",
-		fmt.Sprintf("oci://ghcr.io/%s/liatrio-gh-autogov-workflows@%s", *owner, digest),
-		"--owner", *owner,
-		"--bundle-from-oci",
-		"--format", "json",
-	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		if len(stderr.String()) > 0 {
-			fmt.Fprintf(os.Stderr, "stderr: %s\n", stderr.String())
-		}
-		os.Exit(1)
-	}
-
-	// Pretty print the JSON output
-	var prettyJSON bytes.Buffer
-	if err := json.Indent(&prettyJSON, stdout.Bytes(), "", "  "); err != nil {
-		fmt.Fprintf(os.Stderr, "Error formatting JSON: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Println(prettyJSON.String())
-}
-
-// TODO: Investigate why sigstore-go module is not verifying GitHub attestations correctly
-// The following code attempted to use sigstore-go directly but encountered verification issues
+// Previous implementation using sigstore-go directly:
 /*
 func parseDigestFromOCIRef(ref string) string {
 	if strings.Contains(ref, "@") {
@@ -113,60 +66,48 @@ func getTrustedRoot() ([]byte, error) {
 
 	return nil, fmt.Errorf("no trusted root found for fulcio.githubapp.com")
 }
+*/
 
-// Previous main function that used sigstore-go:
-/*
 func main() {
-	owner := flag.String("owner", "", "GitHub owner/organization name")
-	artifactDigest := flag.String("artifact-digest", "", "Full OCI reference or digest of the artifact to verify")
+	owner := flag.String("owner", "", "The owner of the repository")
+	artifactDigest := flag.String("artifact-digest", "", "The digest of the artifact to verify")
 	flag.Parse()
 
 	if *owner == "" || *artifactDigest == "" {
-		fmt.Printf("Usage: %s -owner <owner> -artifact-digest <digest>\n", os.Args[0])
-		fmt.Printf("Example: %s -owner liatrio -artifact-digest oci://ghcr.io/liatrio/repo@sha256:digest\n", os.Args[0])
+		fmt.Println("Error: owner and artifact-digest are required")
+		flag.Usage()
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
-
-	// Get GitHub auth token from environment
-	token := os.Getenv("GITHUB_AUTH_TOKEN")
-	if token == "" {
-		fmt.Println("Error: GITHUB_AUTH_TOKEN environment variable is required")
-		os.Exit(1)
+	// Extract just the digest part if full OCI URL is provided
+	digest := *artifactDigest
+	if strings.HasPrefix(digest, "oci://") {
+		parts := strings.Split(digest, "@")
+		if len(parts) == 2 {
+			digest = parts[1]
+		}
 	}
 
-	// Get attestations from GitHub
-	atts, err := attestations.GetFromGitHub(ctx, *artifactDigest, *owner, token)
+	// Use go-gh to verify the attestation
+	stdout, stderr, err := gh.Exec("attestation", "verify",
+		fmt.Sprintf("oci://ghcr.io/%s/liatrio-gh-autogov-workflows@%s", *owner, digest),
+		"--owner", *owner,
+		"--bundle-from-oci",
+		"--format", "json",
+	)
 	if err != nil {
-		fmt.Printf("Error getting attestations: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		if len(stderr.String()) > 0 {
+			fmt.Fprintf(os.Stderr, "stderr: %s\n", stderr.String())
+		}
 		os.Exit(1)
 	}
 
-	fmt.Printf("Found %d attestations\n", len(atts))
-
-	// Get trusted root dynamically
-	trustedRootJSON, err := getTrustedRoot()
-	if err != nil {
-		fmt.Printf("Error getting trusted root: %v\n", err)
+	// Pretty print the JSON output
+	var prettyJSON bytes.Buffer
+	if err := json.Indent(&prettyJSON, stdout.Bytes(), "", "  "); err != nil {
+		fmt.Fprintf(os.Stderr, "Error formatting JSON: %v\n", err)
 		os.Exit(1)
 	}
-
-	// Save attestations and trusted root for testing
-	if err := attestations.SaveTestData(ctx, atts, trustedRootJSON); err != nil {
-		fmt.Printf("Error saving test data: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Extract just the digest from the OCI reference
-	digest := parseDigestFromOCIRef(*artifactDigest)
-
-	// Verify the attestations
-	if err := attestations.Verify(ctx, digest, atts, trustedRootJSON, "GitHub, Inc.", "https://token.actions.githubusercontent.com"); err != nil {
-		fmt.Printf("Error verifying attestations: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Println("Successfully verified attestations!")
+	fmt.Println(prettyJSON.String())
 }
-*/

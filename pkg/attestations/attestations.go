@@ -13,7 +13,11 @@ import (
 
 	"github.com/google/go-github/v68/github"
 	"github.com/sigstore/sigstore-go/pkg/bundle"
-	// TODO: Investigate why sigstore-go module is not verifying GitHub attestations correctly
+	"github.com/sigstore/sigstore-go/pkg/root"
+	"github.com/sigstore/sigstore-go/pkg/verify"
+	// TODO: sigstore-go requires at least one transparency log entry for verification (see https://github.com/sigstore/sigstore-go/pull/288).
+	// GitHub's internal Fulcio instance doesn't use CT logs, so we use the GitHub CLI which is designed to work with this setup.
+	// We can revisit using sigstore-go directly if they add support for completely disabling transparency log verification.
 	// Keeping imports commented for reference
 	// "github.com/sigstore/sigstore-go/pkg/root"
 	// "github.com/sigstore/sigstore-go/pkg/verify"
@@ -149,9 +153,6 @@ func WriteToDir(ctx context.Context, dirPath string, digest string, bundles []*b
 	return nil
 }
 
-// TODO: Investigate why sigstore-go module is not verifying GitHub attestations correctly
-// The following code attempted to use sigstore-go directly but encountered verification issues
-/*
 func Verify(ctx context.Context, digest string, bundles []*bundle.Bundle, trustedRootJSON []byte, expectedIssuer string, expectedSAN string) error {
 	trustedRoot, err := root.NewTrustedRootFromJSON(trustedRootJSON)
 	if err != nil {
@@ -160,10 +161,9 @@ func Verify(ctx context.Context, digest string, bundles []*bundle.Bundle, truste
 	trustedMaterial := root.TrustedMaterialCollection{trustedRoot}
 
 	verifierConfig := []verify.VerifierOption{
-		verify.WithSignedCertificateTimestamps(1), // Required for GitHub's internal certificate transparency
+		verify.WithSignedCertificateTimestamps(0), // Set to 0 since GitHub's Fulcio doesn't use CT logs
 		verify.WithObserverTimestamps(1),          // Required for timestamp verification
-		verify.WithTransparencyLog(1),             // Required for transparency log verification
-		verify.WithOnlineVerification(),           // Enable online verification
+		verify.WithTransparencyLog(0),             // Set to 0 since GitHub's Fulcio doesn't use transparency logs
 	}
 
 	verifier, err := verify.NewSignedEntityVerifier(trustedMaterial, verifierConfig...)
@@ -203,7 +203,6 @@ func Verify(ctx context.Context, digest string, bundles []*bundle.Bundle, truste
 
 	return nil
 }
-*/
 
 func ParseDigest(rawDigest string) (string, []byte, error) {
 	// split the digest into algorithm and hash
