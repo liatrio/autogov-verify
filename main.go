@@ -36,11 +36,21 @@ func init() {
 	_ = rootCmd.MarkFlagRequired("artifact-digest")
 	_ = rootCmd.MarkFlagRequired("cert-identity")
 
-	viper.BindPFlag("owner", rootCmd.Flags().Lookup("owner"))
-	viper.BindPFlag("artifact-digest", rootCmd.Flags().Lookup("artifact-digest"))
-	viper.BindPFlag("cert-identity", rootCmd.Flags().Lookup("cert-identity"))
-	viper.BindPFlag("cert-issuer", rootCmd.Flags().Lookup("cert-issuer"))
-	viper.BindPFlag("quiet", rootCmd.Flags().Lookup("quiet"))
+	if err := viper.BindPFlag("owner", rootCmd.Flags().Lookup("owner")); err != nil {
+		panic(fmt.Sprintf("failed to bind owner flag: %v", err))
+	}
+	if err := viper.BindPFlag("artifact-digest", rootCmd.Flags().Lookup("artifact-digest")); err != nil {
+		panic(fmt.Sprintf("failed to bind artifact-digest flag: %v", err))
+	}
+	if err := viper.BindPFlag("cert-identity", rootCmd.Flags().Lookup("cert-identity")); err != nil {
+		panic(fmt.Sprintf("failed to bind cert-identity flag: %v", err))
+	}
+	if err := viper.BindPFlag("cert-issuer", rootCmd.Flags().Lookup("cert-issuer")); err != nil {
+		panic(fmt.Sprintf("failed to bind cert-issuer flag: %v", err))
+	}
+	if err := viper.BindPFlag("quiet", rootCmd.Flags().Lookup("quiet")); err != nil {
+		panic(fmt.Sprintf("failed to bind quiet flag: %v", err))
+	}
 
 	viper.SetEnvPrefix("GITHUB")
 	viper.AutomaticEnv()

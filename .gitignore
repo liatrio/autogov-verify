@@ -1,1 +1,16 @@
-testdata
+# binary files
+/tag-autogov-attestation-verifier
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# test binary, built with go test -c
+*.test
+
+# output of the go coverage tool
+*.out
+
+# go workspace file
+go.work

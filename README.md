@@ -82,9 +82,15 @@ tag-autogov-attestation-verifier -owner <owner> -artifact-digest <digest> [optio
 
 ### Environment Variables
 
+The following environment variables can be used for authentication:
 - `GH_TOKEN`, `GITHUB_TOKEN`, or `GITHUB_AUTH_TOKEN`: GitHub personal access token with read access to packages
-- `GITHUB_OWNER`: GitHub owner/organization name (alternative to --owner flag)
-- `GITHUB_ARTIFACT_DIGEST`: Artifact digest (alternative to --artifact-digest flag)
+
+All command line flags can be set via environment variables with the `GITHUB_` prefix:
+- `GITHUB_OWNER`: Alternative to --owner flag
+- `GITHUB_ARTIFACT_DIGEST`: Alternative to --artifact-digest flag
+- `GITHUB_CERT_IDENTITY`: Alternative to --cert-identity flag
+- `GITHUB_CERT_ISSUER`: Alternative to --cert-issuer flag
+- `GITHUB_QUIET`: Alternative to --quiet flag
 
 ## Examples
 
