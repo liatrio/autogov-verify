@@ -1,4 +1,4 @@
-module github.com/liatrio/tag-autogov-attestation-verifier
+module github.com/liatrio/kpv3-gh-verify
 
 go 1.23
 

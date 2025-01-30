@@ -60,13 +60,13 @@ Each attestation is verified against:
 ## Installation
 
 ```bash
-go install github.com/liatrio/tag-autogov-attestation-verifier@latest
+go install github.com/liatrio/kpv3-gh-verify@latest
 ```
 
 ## Usage
 
 ```bash
-tag-autogov-attestation-verifier -owner <owner> -artifact-digest <digest> [options]
+kpv3-gh-verify -owner <owner> -artifact-digest <digest> [options]
 ```
 
 ### Required Flags
@@ -98,13 +98,13 @@ Verify an image using its digest (long form):
 
 ```bash
 export GITHUB_AUTH_TOKEN=your_token
-tag-autogov-attestation-verifier --owner liatrio --artifact-digest sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682 --cert-identity "https://github.com/owner/repo/.github/workflows/workflow.yaml@refs/heads/main"
+kpv3-gh-verify --owner liatrio --artifact-digest sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682 --cert-identity "https://github.com/owner/repo/.github/workflows/workflow.yaml@refs/heads/main"
 ```
 
 Verify an image using shorthand flags:
 
 ```bash
-tag-autogov-attestation-verifier -o liatrio -d sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682 -i "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main" -q
+kpv3-gh-verify -o liatrio -d sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682 -i "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main" -q
 ```
 
 Using environment variables:
@@ -113,7 +113,7 @@ Using environment variables:
 export GITHUB_AUTH_TOKEN=your_token
 export GITHUB_OWNER=liatrio
 export GITHUB_ARTIFACT_DIGEST=sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682
-tag-autogov-attestation-verifier -i "https://github.com/owner/repo/.github/workflows/workflow.yaml@refs/heads/main"
+kpv3-gh-verify -i "https://github.com/owner/repo/.github/workflows/workflow.yaml@refs/heads/main"
 ```
 
 ## Output

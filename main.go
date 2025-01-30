@@ -8,14 +8,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/liatrio/tag-autogov-attestation-verifier/pkg/attestations"
+	"github.com/liatrio/kpv3-gh-verify/pkg/attestations"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var (
 	rootCmd = &cobra.Command{
-		Use:   "tag-autogov-attestation-verifier",
+		Use:   "kpv3-gh-verify",
 		Short: "Verify GitHub Artifact Attestation",
 		Long: `A tool for verifying GitHub Artifact Attestations using cosign.
 It supports verifying attestations from GitHub Actions workflows with configurable

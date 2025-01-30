@@ -1,12 +1,16 @@
-package root
+ package root
 
-import (
-	"encoding/json"
-	"fmt"
-	"strings"
+ import (
+     "encoding/json"
+     "fmt"
+     "strings"
 
-	"github.com/cli/go-gh/v2"
-)
+     _ "embed"
+     "github.com/cli/go-gh/v2"
+ )
+
+ //go:embed github-trusted-root.json
+ var GithubTrustedRoot []byte
 
 // fetches gh trusted root
 func FetchTrustedRoot() ([]byte, error) {

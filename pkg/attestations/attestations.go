@@ -16,8 +16,9 @@ import (
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
 	"github.com/sigstore/cosign/v2/pkg/oci"
-	"github.com/sigstore/cosign/v2/pkg/oci/static"
-	sigstore "github.com/sigstore/sigstore-go/pkg/bundle"
+     "github.com/sigstore/cosign/v2/pkg/oci/static"
+     sigstore "github.com/sigstore/sigstore-go/pkg/bundle"
+     "github.com/liatrio/kpv3-gh-verify/pkg/root"
 	// TODO: sigstore-go requires at least one transparency log entry for verification (see https://github.com/sigstore/sigstore-go/pull/288).
 	// GitHub's internal Fulcio instance doesn't use CT logs, so we use the GitHub CLI which is designed to work with this setup.
 	// We can revisit using sigstore-go directly if they add support for completely disabling transparency log verification.
@@ -69,9 +70,6 @@ func getTrustedRoot() ([]byte, error) {
 	return nil, fmt.Errorf("no trusted root found for fulcio.githubapp.com")
 }
 */
-
-//go:embed testdata/github-trusted-root.json
-var GithubTrustedRoot []byte
 
 // gh trusted root structure
 type TrustedRoot struct {
@@ -136,10 +134,9 @@ func GetFromGitHub(ctx context.Context, artifactRef string, org string, token st
 	}
 	defer os.RemoveAll(cacheDir)
 
-	// write trusted root
-	trust := filepath.Join(cacheDir, "github-trusted-root.json")
-	if err := os.WriteFile(trust, GithubTrustedRoot, 0644); err != nil {
-		return nil, fmt.Errorf("failed to write trusted root: %w", err)
+     // write trusted root
+     trust := filepath.Join(cacheDir, "github-trusted-root.json")
+     if err := os.WriteFile(trust, root.GithubTrustedRoot, 0644); err != nil {
 	}
 
 	// get and write manifest
