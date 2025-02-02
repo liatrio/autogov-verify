@@ -10,7 +10,6 @@ import (
 
 	"github.com/liatrio/kpv3-gh-verify/pkg/attestations"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -33,22 +32,6 @@ func init() {
 	rootCmd.Flags().StringP("cert-issuer", "s", "https://token.actions.githubusercontent.com", "Certificate issuer to verify against")
 	rootCmd.Flags().String("blob-path", "", "Path to a blob file to verify attestations against")
 	rootCmd.Flags().BoolP("quiet", "q", false, "Only show errors and final results")
-
-	rootCmd.Flags().SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {
-		switch name {
-		case "o":
-			name = "owner"
-		case "d":
-			name = "artifact-digest"
-		case "i":
-			name = "cert-identity"
-		case "s":
-			name = "cert-issuer"
-		case "q":
-			name = "quiet"
-		}
-		return pflag.NormalizedName(name)
-	})
 
 	_ = rootCmd.MarkFlagRequired("owner")
 	_ = rootCmd.MarkFlagRequired("cert-identity")
