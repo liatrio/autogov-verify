@@ -115,16 +115,25 @@ func Verify(ctx context.Context, digest string, bundles []*bundle.Bundle, truste
 		return err
 	}
 
+	// Add VSA verification as a pre-check before sigstore verification
+	for _, bundle := range bundles {
+		if isVSA(bundle) {
+			if err := verifyVSA(bundle); err != nil {
+				return fmt.Errorf("VSA verification failed: %w", err)
+			}
+		}
+	}
+
 	trustedMaterial := root.TrustedMaterialCollection{
 		trustedRoot,
 	}
 
-	// Controls which validations occur
 	verifierConfig := []verify.VerifierOption{
 		verify.WithSignedCertificateTimestamps(1),
 		verify.WithObserverTimestamps(1),
 		verify.WithTransparencyLog(1),
 		verify.WithOnlineVerification(),
+		verify.WithPolicyCallback(vsaPolicyCallback),
 	}
 
 	verifier, err := verify.NewSignedEntityVerifier(trustedMaterial, verifierConfig...)
@@ -162,6 +171,108 @@ func Verify(ctx context.Context, digest string, bundles []*bundle.Bundle, truste
 	}
 
 	return nil
+}
+
+// VSA verification logic
+func verifyVSA(b *bundle.Bundle) error {
+	payload, err := b.DsseEnvelope.DecodePayload()
+	if err != nil {
+		return fmt.Errorf("failed to decode VSA payload: %w", err)
+	}
+	
+	var vsa internal.AttestationVSA
+	if err := json.Unmarshal(payload, &vsa); err != nil {
+		return fmt.Errorf("failed to parse VSA contents: %w", err)
+	}
+
+	if vsa.PredicateType != "https://slsa.dev/provenance/v1" {
+		return fmt.Errorf("invalid predicate type: %s", vsa.PredicateType)
+	}
+
+	// Verify SLSA build level
+	if err := vsa.VerifyBuildLevel(1); err != nil {
+		return fmt.Errorf("build level verification failed: %w", err)
+	}
+
+	return nil
+}
+
+// Policy callback for sigstore verification
+func vsaPolicyCallback(e verify.Entity) error {
+	// Check builder identity matches allowed patterns
+	if !strings.HasPrefix(e.Certificate.SourceRepository, "https://github.com/liatrio/") {
+		return fmt.Errorf("untrusted builder repository: %s", e.Certificate.SourceRepository)
+	}
+
+	// Check certificate extensions
+	if _, ok := e.Certificate.Extensions["GitHubWorkflow"]; !ok {
+		return errors.New("missing GitHub workflow in certificate extensions")
+	}
+
+	return nil
+}
+
+// Export VSA verification for use by validation package
+func VerifyVSA(b *Bundle) error {
+	payload, err := b.DsseEnvelope.DecodePayload()
+	if err != nil {
+		return fmt.Errorf("failed to decode VSA payload: %w", err)
+	}
+	
+	var vsa internal.AttestationVSA
+	if err := json.Unmarshal(payload, &vsa); err != nil {
+		return fmt.Errorf("failed to parse VSA contents: %w", err)
+	}
+
+	// Validate SLSA predicate type
+	if vsa.PredicateType != "https://slsa.dev/provenance/v1" {
+		return fmt.Errorf("invalid predicate type: %s", vsa.PredicateType)
+	}
+
+	// Verify certificate trust chain
+	certPEM, _ := pem.Decode([]byte(b.VerificationMaterial.Certificate.RawBytes))
+	if certPEM == nil {
+		return fmt.Errorf("failed to decode PEM certificate")
+	}
+
+	cert, err := x509.ParseCertificate(certPEM.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse certificate: %w", err)
+	}
+
+	if time.Now().After(cert.NotAfter) {
+		return fmt.Errorf("certificate expired at %s", cert.NotAfter)
+	}
+
+	// Verify cryptographic signature
+	sig, err := base64.StdEncoding.DecodeString(b.DsseEnvelope.Signatures[0].Sig)
+	if err != nil {
+		return fmt.Errorf("failed to decode signature: %w", err)
+	}
+
+	err = cert.CheckSignature(cert.SignatureAlgorithm, payload, sig)
+	if err != nil {
+		return fmt.Errorf("signature verification failed: %w", err)
+	}
+
+	// Validate build level requirements
+	if err := vsa.VerifyBuildLevel(1); err != nil {
+		return fmt.Errorf("build level verification failed: %w", err)
+	}
+
+	return nil
+}
+
+// Check if bundle contains a VSA attestation
+func isVSA(b *bundle.Bundle) bool {
+	if b.DsseEnvelope == nil {
+		return false
+	}
+
+	payloadType := b.DsseEnvelope.PayloadType
+	return strings.Contains(payloadType, "vsa") || 
+		strings.Contains(payloadType, "provenance") ||
+		strings.Contains(payloadType, "application/vnd.dev.sigstore")
 }
 
 func ParseDigest(rawDigest string) (string, []byte, error) {
