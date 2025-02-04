@@ -20,7 +20,7 @@ func ReadAttestationsFromDir(ctx context.Context, dirPath string, digest string)
 	}
 
 	if dirPath == "" {
-		dirPath = "."
+		dirPath = getDefaultDir()
 	}
 
 	filename := digestToFileName(digest)
@@ -75,7 +75,7 @@ func WriteAttestationsToDir(ctx context.Context, dirPath string, digest string, 
 	}
 
 	if dirPath == "" {
-		dirPath = "."
+		dirPath = getDefaultDir()
 	} else {
 		err := os.MkdirAll(dirPath, 0755)
 		if err != nil {
@@ -134,5 +134,25 @@ func WriteAttestationsToDir(ctx context.Context, dirPath string, digest string, 
 
 // transform digest to file
 func digestToFileName(digest string) string {
-	return fmt.Sprintf("testdata/%s.json", strings.Replace(digest, ":", "-", 1))
+	return fmt.Sprintf("%s.json", strings.Replace(digest, ":", "-", 1))
+}
+
+// returns the default dir for storing attestations
+func getDefaultDir() string {
+	// Create temp dir
+	tmpDir, err := os.MkdirTemp("", "attestation-signatures-")
+	if err != nil {
+		// fallback to current dir if temp creation fails
+		return "."
+	}
+	return tmpDir
+}
+
+// removes temp temp
+func CleanupTempDir(dirPath string) error {
+	// remove if temp dir (starts with os.TempDir())
+	if strings.HasPrefix(dirPath, os.TempDir()) {
+		return os.RemoveAll(dirPath)
+	}
+	return nil
 }
