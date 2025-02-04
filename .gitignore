@@ -14,3 +14,19 @@
 
 # go workspace file
 go.work
+
+
+
+# build dir used by air
+tmp/
+
+# log files
+build-errors.log
+*.log
+
+# vscode specific files
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json.example
+.air.toml

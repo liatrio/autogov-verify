@@ -26,6 +26,7 @@ certificate identity and issuer.`,
 
 func init() {
 	// flags
+	rootCmd.Flags().StringP("wf-repo", "w", "", "autogov workflow repository name (required)")
 	rootCmd.Flags().StringP("owner", "o", "", "GitHub owner/organization name (required)")
 	rootCmd.Flags().StringP("artifact-digest", "d", "", "Full OCI reference or digest of the artifact to verify (optional when using --blob-path)")
 	rootCmd.Flags().String("blob-path", "", "Path to a blob file to verify attestations against")
@@ -35,6 +36,7 @@ func init() {
 
 	_ = rootCmd.MarkFlagRequired("owner")
 	_ = rootCmd.MarkFlagRequired("cert-identity")
+	_ = rootCmd.MarkFlagRequired("wf-repo")
 
 	rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		owner := viper.GetString("owner")
@@ -100,6 +102,7 @@ func run(cmd *cobra.Command, args []string) error {
 		viper.GetString("owner"),
 		token,
 		attestations.Options{
+			Repository:   viper.GetString("wf-repo"),
 			CertIdentity: viper.GetString("cert-identity"),
 			CertIssuer:   viper.GetString("cert-issuer"),
 			BlobPath:     viper.GetString("blob-path"),

@@ -25,6 +25,8 @@ import (
 
 // config for verify
 type Options struct {
+	// expected wf repository name
+	Repository string
 	// expected certificate identity (e.g., GitHub Actions workflow URL)
 	CertIdentity string
 	// expected certificate issuer (e.g., GitHub Actions OIDC issuer)
@@ -118,7 +120,11 @@ func GetFromGitHub(ctx context.Context, artifactRef string, org string, token st
 
 	opts = setDefaultOptions(opts)
 
-	ref, err := name.ParseReference(fmt.Sprintf("ghcr.io/%s/demo-gh-autogov-workflows@%s", org, artifactRef))
+	if opts.Repository == "" {
+		return nil, fmt.Errorf("autogov workflow repository name is required")
+	}
+
+	ref, err := name.ParseReference(fmt.Sprintf("ghcr.io/%s/%s@%s", org, opts.Repository, artifactRef))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse reference: %w", err)
 	}
