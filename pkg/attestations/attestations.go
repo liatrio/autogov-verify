@@ -13,7 +13,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-github/v68/github"
-	"github.com/liatrio/kpv3-gh-verify/pkg/root"
+	"github.com/liatrio/autogov-verify/pkg/root"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
 	"github.com/sigstore/cosign/v2/pkg/oci"

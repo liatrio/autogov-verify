@@ -1,20 +1,20 @@
 ---
 
 <p align="center">
-  <a href="https://github.com/liatrio/kpv3-gh-verify/actions/workflows/build.yml?query=branch%3Amain">
-    <img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/liatrio/kpv3-gh-verify/build.yml?branch=main&style=for-the-badge">
+  <a href="https://github.com/liatrio/autogov-verify/actions/workflows/build.yml?query=branch%3Amain">
+    <img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/liatrio/autogov-verify/build.yml?branch=main&style=for-the-badge">
   </a>
-  <a href="https://goreportcard.com/report/github.com/liatrio/kpv3-gh-verify">
-    <img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/liatrio/kpv3-gh-verify?style=for-the-badge">
+  <a href="https://goreportcard.com/report/github.com/liatrio/autogov-verify">
+    <img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/liatrio/autogov-verify?style=for-the-badge">
   </a>
-  <a href="https://codecov.io/gh/liatrio/kpv3-gh-verify/branch/main" >
-    <img alt="Codecov Status" src="https://img.shields.io/codecov/c/github/liatrio/kpv3-gh-verify?style=for-the-badge"/>
+  <a href="https://codecov.io/gh/liatrio/autogov-verify/branch/main" >
+    <img alt="Codecov Status" src="https://img.shields.io/codecov/c/github/liatrio/autogov-verify?style=for-the-badge"/>
   </a>
-  <a href="https://github.com/liatrio/kpv3-gh-verify/releases">
-    <img alt="GitHub release" src="https://img.shields.io/github/v/release/liatrio/kpv3-gh-verify?include_prereleases&style=for-the-badge">
+  <a href="https://github.com/liatrio/autogov-verify/releases">
+    <img alt="GitHub release" src="https://img.shields.io/github/v/release/liatrio/autogov-verify?include_prereleases&style=for-the-badge">
   </a>
-  <a href="https://api.securityscorecards.dev/projects/github.com/liatrio/kpv3-gh-verify/badge">
-    <img alt="OpenSSF Scorecard" src="https://img.shields.io/ossf-scorecard/github.com/liatrio/kpv3-gh-verify?label=openssf%20scorecard&style=for-the-badge">
+  <a href="https://api.securityscorecards.dev/projects/github.com/liatrio/autogov-verify/badge">
+    <img alt="OpenSSF Scorecard" src="https://img.shields.io/ossf-scorecard/github.com/liatrio/autogov-verify?label=openssf%20scorecard&style=for-the-badge">
   </a>
 </p>
 
@@ -61,13 +61,13 @@ Each attestation is verified against:
 ## Installation
 
 ```bash
-go install github.com/liatrio/kpv3-gh-verify@latest
+go install github.com/liatrio/autogov-verify@latest
 ```
 
 ## Usage
 
 ```bash
-kpv3-gh-verify -owner <owner> -cert-identity <identity> [options]
+autogov-verify -owner <owner> -cert-identity <identity> [options]
 ```
 
 ### Required Flags
@@ -104,13 +104,13 @@ Verify an image using its digest (long form):
 
 ```bash
 export GITHUB_AUTH_TOKEN=your_token
-kpv3-gh-verify --owner liatrio --cert-identity "https://github.com/owner/repo/.github/workflows/workflow.yaml@refs/heads/main" --artifact-digest sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682
+autogov-verify --owner liatrio --cert-identity "https://github.com/owner/repo/.github/workflows/workflow.yaml@refs/heads/main" --artifact-digest sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682
 ```
 
 Verify an image using shorthand flags:
 
 ```bash
-kpv3-gh-verify -o liatrio -i "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main" -d sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682 -q
+autogov-verify -o liatrio -i "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main" -d sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682 -q
 ```
 
 Using environment variables:
@@ -120,7 +120,7 @@ export GITHUB_AUTH_TOKEN=your_token
 export GITHUB_OWNER=liatrio
 export GITHUB_CERT_IDENTITY="https://github.com/owner/repo/.github/workflows/workflow.yaml@refs/heads/main"
 export GITHUB_CERT_ISSUER=https://token.actions.githubusercontent.com
-kpv3-gh-verify -d sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682
+autogov-verify -d sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682
 ```
 
 ## Output

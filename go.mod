@@ -1,4 +1,4 @@
-module github.com/liatrio/kpv3-gh-verify
+module github.com/liatrio/autogov-verify
 
 go 1.23
 

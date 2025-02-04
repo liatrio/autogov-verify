@@ -26,7 +26,7 @@ func TestGetFromGitHub(t *testing.T) {
 			artifactRef: "sha256:abc123",
 			org:         "invalid-org-that-does-not-exist",
 			opts: Options{
-				CertIdentity: "https://github.com/liatrio/kpv3-gh-verify/.github/workflows/test.yml@refs/heads/main",
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
 				CertIssuer:   "https://token.actions.githubusercontent.com",
 			},
 			wantErr: true,
@@ -36,7 +36,7 @@ func TestGetFromGitHub(t *testing.T) {
 			artifactRef: "invalid-digest",
 			org:         "liatrio",
 			opts: Options{
-				CertIdentity: "https://github.com/liatrio/kpv3-gh-verify/.github/workflows/test.yml@refs/heads/main",
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
 				CertIssuer:   "https://token.actions.githubusercontent.com",
 			},
 			wantErr: true,
@@ -79,7 +79,7 @@ func TestGetFromGitHubWithBlob(t *testing.T) {
 			artifactRef: "",
 			org:         "liatrio",
 			opts: Options{
-				CertIdentity: "https://github.com/liatrio/kpv3-gh-verify/.github/workflows/test.yml@refs/heads/main",
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
 				CertIssuer:   "https://token.actions.githubusercontent.com",
 				BlobPath:     blobPath,
 			},
