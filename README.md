@@ -64,6 +64,27 @@ Each attestation is verified against:
 go install github.com/liatrio/autogov-verify@latest
 ```
 
+## Local Development
+
+The project includes a Makefile with several useful targets for local development:
+
+```bash
+make help         # Show all available make targets
+make all         # Run verify and build (default)
+make build       # Build the binary
+make test        # Run tests with coverage
+make lint        # Run linter
+make format      # Format code
+make verify      # Run format, lint, and test
+make install     # Install binary to /usr/local/bin
+```
+
+For development, you'll need:
+
+- Go 1.21 or higher
+- golangci-lint (for linting)
+- A GitHub Personal Access Token with appropriate organization permissions for testing
+
 ## Usage
 
 ```bash
@@ -172,7 +193,7 @@ Common issues and solutions:
 
 ## License
 
-Copyright 2024 The Liatrio Authors
+Copyright 2025 The Liatrio Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
