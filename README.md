@@ -35,7 +35,7 @@ A tool for verifying GitHub Artifact Attestations using cosign.
 
 ## About
 
-This tool verifies GitHub Artifact Attestations using cosign. It supports the verification of [`NewBundleFormat`](https://github.com/sigstore/sigstore-go/blob/v0.6.2/pkg/bundle/bundle.go#L59) (e.g., [GitHub Artifact Attestations, npm Provenance, HomebrewProvenance, etc](https://blog.sigstore.dev/cosign-verify-bundles/)).
+This tool verifies GitHub Artifact Attestations using cosign. It supports the verification of attestations in the [`NewBundleFormat`](https://github.com/sigstore/sigstore-go/blob/v0.6.2/pkg/bundle/bundle.go#L59) (e.g., [GitHub Artifact Attestations, npm Provenance, HomebrewProvenance, etc](https://blog.sigstore.dev/cosign-verify-bundles/)).
 
 ## Verification Process
 
