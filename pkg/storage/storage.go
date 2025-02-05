@@ -139,7 +139,7 @@ func digestToFileName(digest string) string {
 
 // returns the default dir for storing attestations
 func getDefaultDir() string {
-	// Create temp dir
+	// create temp dir
 	tmpDir, err := os.MkdirTemp("", "attestation-signatures-")
 	if err != nil {
 		// fallback to current dir if temp creation fails
@@ -148,9 +148,8 @@ func getDefaultDir() string {
 	return tmpDir
 }
 
-// removes temp temp
+// removes temp dir
 func CleanupTempDir(dirPath string) error {
-	// remove if temp dir (starts with os.TempDir())
 	if strings.HasPrefix(dirPath, os.TempDir()) {
 		return os.RemoveAll(dirPath)
 	}
