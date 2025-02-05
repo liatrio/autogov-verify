@@ -35,12 +35,7 @@ A tool for verifying GitHub Artifact Attestations using cosign.
 
 ## About
 
-This tool verifies GitHub Artifact Attestations using cosign. It supports multiple types of attestations:
-
-- **Vulnerability Scan** (`https://in-toto.io/attestation/vulns/v0.1`): Verifies vulnerability scanning results
-- **Software Bill of Materials** (`https://cyclonedx.org/bom`): Verifies the SBOM of the container
-- **SLSA Provenance** (`https://slsa.dev/provenance/v1`): Verifies build provenance information
-- **Cosign Attestation** (`https://cosign.sigstore.dev/attestation/v1`): Verifies generic cosign attestations
+This tool verifies GitHub Artifact Attestations using cosign. It supports the verification of [`NewBundleFormat`](https://github.com/sigstore/sigstore-go/blob/v0.6.2/pkg/bundle/bundle.go#L59) (e.g., [GitHub Artifact Attestations, npm Provenance, HomebrewProvenance, etc](https://blog.sigstore.dev/cosign-verify-bundles/)).
 
 ## Verification Process
 
