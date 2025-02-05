@@ -1,0 +1,15 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: autogov-verify
+  description: A tool for getting/verifying GitHub Artifact Attestations
+  annotations:
+    github.com/project-slug: liatrio/autogov-helper
+  tags:
+    - automated-governance
+    - golang
+spec:
+  type: other
+  lifecycle: in-progress
+  owner: tag-autogov
