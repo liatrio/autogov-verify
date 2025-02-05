@@ -5,6 +5,7 @@ go 1.23
 require (
 	github.com/cli/go-gh/v2 v2.11.2
 	github.com/google/go-containerregistry v0.20.2
+	github.com/google/go-github/v45 v45.2.0
 	github.com/google/go-github/v68 v68.0.0
 	github.com/sigstore/cosign/v2 v2.4.1
 	github.com/sigstore/sigstore-go v0.6.2

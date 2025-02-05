@@ -2,6 +2,7 @@ package attestations
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -19,8 +20,6 @@ import (
 	"github.com/sigstore/cosign/v2/pkg/oci"
 	"github.com/sigstore/cosign/v2/pkg/oci/static"
 	sigstore "github.com/sigstore/sigstore-go/pkg/bundle"
-
-	"crypto/sha256"
 )
 
 // example options
@@ -76,8 +75,23 @@ func GetFromGitHub(ctx context.Context, artifactRef string, org string, token st
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	// init gh client
-	client := github.NewClient(nil).WithAuthToken(token)
+	// validate inputs first
+	if err := validateInputs(token, org, artifactRef); err != nil {
+		return nil, err
+	}
+
+	// set default options
+	opts = setDefaultOptions(opts)
+
+	// if blob path is set, handle blob verification
+	if opts.BlobPath != "" {
+		return handleBlobVerification(ctx, artifactRef, org, token, opts)
+	}
+
+	// validate repository is set for container verification
+	if opts.Repository == "" {
+		return nil, fmt.Errorf("repository is required for container verification")
+	}
 
 	// create verify dir
 	cacheDir, err := os.MkdirTemp(os.TempDir(), "attestations-*")
@@ -92,72 +106,7 @@ func GetFromGitHub(ctx context.Context, artifactRef string, org string, token st
 		return nil, fmt.Errorf("failed to write trusted root: %w", err)
 	}
 
-	// if blob path, verify blob directly without fetching from ghcr
-	if opts.BlobPath != "" {
-		if !opts.Quiet {
-			fmt.Println("Verifying blob attestations...")
-		}
-
-		// read blob content
-		blobData, err := os.ReadFile(opts.BlobPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read blob: %w", err)
-		}
-
-		// if no blob digest, calculate from blobpath
-		if artifactRef == "" {
-			h := sha256.New()
-			h.Write(blobData)
-			artifactRef = fmt.Sprintf("sha256:%x", h.Sum(nil))
-			if !opts.Quiet {
-				fmt.Printf("Using calculated blob digest: %s\n", artifactRef)
-			}
-		}
-
-		// get gh attestations
-		atts, _, err := client.Organizations.ListAttestations(ctx, org, artifactRef, &github.ListOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("failed to list attestations: %w", err)
-		}
-
-		var sigs []oci.Signature
-		for i, att := range atts.Attestations {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			default:
-				sig, err := verifyAttestation(ctx, att, opts.BlobPath, trust, cacheDir, i, opts)
-				if err != nil {
-					return nil, err
-				}
-				sigs = append(sigs, sig)
-			}
-		}
-
-		if len(sigs) == 0 {
-			return nil, fmt.Errorf("no valid signatures found")
-		}
-
-		return sigs, nil
-	}
-
-	if err := validateInputs(token, org, artifactRef); err != nil {
-		return nil, err
-	}
-
-	// validate blob path
-	if opts.BlobPath != "" {
-		if _, err := os.Stat(opts.BlobPath); err != nil {
-			return nil, fmt.Errorf("blob file not found: %w", err)
-		}
-	}
-
-	opts = setDefaultOptions(opts)
-
-	if opts.Repository == "" {
-		return nil, fmt.Errorf("autogov workflow repository name is required")
-	}
-
+	// parse reference
 	ref, err := name.ParseReference(fmt.Sprintf("ghcr.io/%s/%s@%s", org, opts.Repository, artifactRef))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse reference: %w", err)
@@ -180,6 +129,7 @@ func GetFromGitHub(ctx context.Context, artifactRef string, org string, token st
 	}
 
 	// get gh attestations
+	client := github.NewClient(nil).WithAuthToken(token)
 	atts, _, err := client.Organizations.ListAttestations(ctx, org, digest.DigestStr(), &github.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list attestations: %w", err)
@@ -449,4 +399,66 @@ func ExampleGetFromGitHub() {
 		return
 	}
 	fmt.Printf("Successfully verified %d signatures\n", len(sigs))
+}
+
+func handleBlobVerification(ctx context.Context, artifactRef string, org string, token string, opts Options) ([]oci.Signature, error) {
+	if !opts.Quiet {
+		fmt.Println("Verifying blob attestations...")
+	}
+
+	// read blob content
+	blobData, err := os.ReadFile(opts.BlobPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read blob: %w", err)
+	}
+
+	// if no blob digest, calculate from blobpath
+	if artifactRef == "" {
+		h := sha256.New()
+		h.Write(blobData)
+		artifactRef = fmt.Sprintf("sha256:%x", h.Sum(nil))
+		if !opts.Quiet {
+			fmt.Printf("Using calculated blob digest: %s\n", artifactRef)
+		}
+	}
+
+	// create verify dir
+	cacheDir, err := os.MkdirTemp(os.TempDir(), "attestations-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cache directory: %w", err)
+	}
+	defer os.RemoveAll(cacheDir)
+
+	// write trusted root
+	trust := filepath.Join(cacheDir, "github-trusted-root.json")
+	if err := os.WriteFile(trust, root.GithubTrustedRoot, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write trusted root: %w", err)
+	}
+
+	// get gh attestations
+	client := github.NewClient(nil).WithAuthToken(token)
+	atts, _, err := client.Organizations.ListAttestations(ctx, org, artifactRef, &github.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list attestations: %w", err)
+	}
+
+	var sigs []oci.Signature
+	for i, att := range atts.Attestations {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			sig, err := verifyAttestation(ctx, att, opts.BlobPath, trust, cacheDir, i, opts)
+			if err != nil {
+				return nil, err
+			}
+			sigs = append(sigs, sig)
+		}
+	}
+
+	if len(sigs) == 0 {
+		return nil, fmt.Errorf("no valid signatures found")
+	}
+
+	return sigs, nil
 }
