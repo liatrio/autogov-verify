@@ -23,18 +23,52 @@ import (
 	"crypto/sha256"
 )
 
+// example options
+const (
+	// default gha oidc token issuer
+	DefaultCertIssuer = "https://token.actions.githubusercontent.com"
+
+	// cert identity patterns
+	ExampleWorkflowMainRef   = "https://github.com/OWNER/REPO/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main"
+	ExampleWorkflowTagRef    = "https://github.com/OWNER/REPO/.github/workflows/rw-hp-attest-image.yaml@refs/tags/v1.0.0"
+	ExampleWorkflowCommitRef = "https://github.com/OWNER/REPO/.github/workflows/rw-hp-attest-image.yaml@refs/pull/123/merge"
+	ExampleWorkflowSHARef    = "https://github.com/OWNER/REPO/.github/workflows/rw-hp-attest-image.yaml@f1a9b0be784bc27ba9076d76b75025d77ba18919"
+)
+
+// example container/blob options
+var (
+	ExampleContainerOptions = Options{
+		Repository:   "my-container-repo",
+		CertIdentity: "https://github.com/myorg/myrepo/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main",
+		CertIssuer:   DefaultCertIssuer,
+		Quiet:        false,
+	}
+
+	ExampleBlobOptions = Options{
+		CertIdentity: "https://github.com/myorg/myrepo/.github/workflows/rw-hp-attest-blob.yaml@refs/heads/main",
+		CertIssuer:   DefaultCertIssuer,
+		BlobPath:     "/path/to/my/file.txt",
+		Quiet:        false,
+	}
+)
+
 // config for verify
 type Options struct {
 	// expected wf repository name
 	Repository string
-	// expected certificate identity (e.g., GitHub Actions workflow URL)
+	// expected certificate identity (e.g., gha workflow url)
+	// format: https://github.com/OWNER/REPO/.github/workflows/WORKFLOW.yml@REF
+	// example: https://github.com/myorg/myrepo/.github/workflows/build.yml@refs/heads/main
 	CertIdentity string
-	// expected certificate issuer (e.g., GitHub Actions OIDC issuer)
+	// expected certificate issuer (e.g., gha oidc issuer)
+	// default: https://token.actions.githubusercontent.com
 	CertIssuer string
-	// reduce output verbosity
-	Quiet bool
 	// path to blob file to verify against
+	// if given, verification performed against blob instead of image
+	// example: "/path/to/my/file.txt"
 	BlobPath string
+	// reduces output verbosity
+	Quiet bool
 }
 
 // retrieves and verifies attestations for a gh container image or blob
@@ -187,7 +221,7 @@ func validateInputs(token, org, artifactRef string) error {
 
 func setDefaultOptions(opts Options) Options {
 	if opts.CertIssuer == "" {
-		opts.CertIssuer = "https://token.actions.githubusercontent.com"
+		opts.CertIssuer = DefaultCertIssuer
 	}
 	return opts
 }
@@ -382,4 +416,37 @@ func WriteToDir(ctx context.Context, dirPath string, digest string, sigs []oci.S
 // transform digest to file
 func digestToFileName(digest string) string {
 	return fmt.Sprintf("testdata/%s.json", strings.Replace(digest, ":", "-", 1))
+}
+
+// demonstrates how to use the GetFromGitHub function
+func ExampleGetFromGitHub() {
+	ctx := context.Background()
+
+	// verifying a container image
+	sigs, err := GetFromGitHub(
+		ctx,
+		"sha256:abc123def456",
+		"myorg",
+		"ghp_123456789",
+		ExampleContainerOptions,
+	)
+	if err != nil {
+		fmt.Printf("Failed to verify container: %v\n", err)
+		return
+	}
+	fmt.Printf("Successfully verified %d signatures\n", len(sigs))
+
+	// verifying a blob
+	sigs, err = GetFromGitHub(
+		ctx,
+		"", // digest will be calculated from blob
+		"myorg",
+		"ghp_123456789",
+		ExampleBlobOptions,
+	)
+	if err != nil {
+		fmt.Printf("Failed to verify blob: %v\n", err)
+		return
+	}
+	fmt.Printf("Successfully verified %d signatures\n", len(sigs))
 }
