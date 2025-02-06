@@ -38,15 +38,17 @@ const (
 var (
 	ExampleContainerOptions = Options{
 		Repository:   "my-container-repo",
+		ExpectedRef:  "refs/heads/main",
 		CertIdentity: "https://github.com/myorg/myrepo/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main",
 		CertIssuer:   DefaultCertIssuer,
 		Quiet:        false,
 	}
 
 	ExampleBlobOptions = Options{
+		BlobPath:     "/path/to/my/file.txt",
+		ExpectedRef:  "refs/heads/main",
 		CertIdentity: "https://github.com/myorg/myrepo/.github/workflows/rw-hp-attest-blob.yaml@refs/heads/main",
 		CertIssuer:   DefaultCertIssuer,
-		BlobPath:     "/path/to/my/file.txt",
 		Quiet:        false,
 	}
 )
@@ -55,6 +57,13 @@ var (
 type Options struct {
 	// expected wf repository name
 	Repository string
+	// path to blob file to verify against
+	// if given, verification performed against blob instead of image
+	// example: "/path/to/my/file.txt"
+	BlobPath string
+	// expected repository ref (e.g., refs/heads/main)
+	// verifies that the source repo ref in the build provenance attestation matches this value (e.g., ${{ github.ref }})
+	ExpectedRef string
 	// expected certificate identity (e.g., gha workflow url)
 	// format: https://github.com/OWNER/REPO/.github/workflows/WORKFLOW.yml@REF
 	// example: https://github.com/myorg/myrepo/.github/workflows/build.yml@refs/heads/main
@@ -62,10 +71,6 @@ type Options struct {
 	// expected certificate issuer (e.g., gha oidc issuer)
 	// default: https://token.actions.githubusercontent.com
 	CertIssuer string
-	// path to blob file to verify against
-	// if given, verification performed against blob instead of image
-	// example: "/path/to/my/file.txt"
-	BlobPath string
 	// reduces output verbosity
 	Quiet bool
 }
@@ -197,9 +202,50 @@ func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPat
 	// set predicate type
 	var statement struct {
 		PredicateType string `json:"predicateType"`
+		Predicate     struct {
+			BuildDefinition struct {
+				ExternalParameters struct {
+					Workflow struct {
+						Ref string `json:"ref"`
+					} `json:"workflow"`
+				} `json:"externalParameters"`
+			} `json:"buildDefinition"`
+		} `json:"predicate"`
 	}
 	if err := json.Unmarshal(b.GetDsseEnvelope().Payload, &statement); err != nil {
 		return nil, fmt.Errorf("failed to parse statement: %w", err)
+	}
+
+	// create signature from attestation
+	sig, err := static.NewSignature(
+		b.GetDsseEnvelope().Payload,
+		string(b.GetDsseEnvelope().Signatures[0].Sig),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create signature: %w", err)
+	}
+
+	// verify source repository ref if expected ref is set
+	if opts.ExpectedRef != "" {
+		// check if build provenance attestation
+		if statement.PredicateType != "https://slsa.dev/provenance/v1" {
+			// skip non-provenance attestations
+			return sig, nil
+		}
+
+		sourceRef := statement.Predicate.BuildDefinition.ExternalParameters.Workflow.Ref
+		if sourceRef == "" {
+			return nil, fmt.Errorf("no source repository ref found in verification result")
+		}
+
+		// verify source repository ref matches expected ref
+		if sourceRef != opts.ExpectedRef {
+			return nil, fmt.Errorf("source repository ref %s does not match expected ref %s", sourceRef, opts.ExpectedRef)
+		}
+
+		if !opts.Quiet {
+			fmt.Printf("✓ Source repository ref verified: %s\n", sourceRef)
+		}
 	}
 
 	// cosign verify config
@@ -239,15 +285,6 @@ func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPat
 	if !opts.Quiet {
 		fmt.Printf("✓ Attestation %d verified successfully\n", index+1)
 		fmt.Println("---")
-	}
-
-	// create signature from attestation
-	sig, err := static.NewSignature(
-		b.GetDsseEnvelope().Payload,
-		string(b.GetDsseEnvelope().Signatures[0].Sig),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create signature: %w", err)
 	}
 
 	return sig, nil
@@ -368,39 +405,6 @@ func digestToFileName(digest string) string {
 	return fmt.Sprintf("testdata/%s.json", strings.Replace(digest, ":", "-", 1))
 }
 
-// demonstrates how to use the GetFromGitHub function
-func ExampleGetFromGitHub() {
-	ctx := context.Background()
-
-	// verifying a container image
-	sigs, err := GetFromGitHub(
-		ctx,
-		"sha256:abc123def456",
-		"myorg",
-		"ghp_123456789",
-		ExampleContainerOptions,
-	)
-	if err != nil {
-		fmt.Printf("Failed to verify container: %v\n", err)
-		return
-	}
-	fmt.Printf("Successfully verified %d signatures\n", len(sigs))
-
-	// verifying a blob
-	sigs, err = GetFromGitHub(
-		ctx,
-		"", // digest will be calculated from blob
-		"myorg",
-		"ghp_123456789",
-		ExampleBlobOptions,
-	)
-	if err != nil {
-		fmt.Printf("Failed to verify blob: %v\n", err)
-		return
-	}
-	fmt.Printf("Successfully verified %d signatures\n", len(sigs))
-}
-
 func handleBlobVerification(ctx context.Context, artifactRef string, org string, token string, opts Options) ([]oci.Signature, error) {
 	if !opts.Quiet {
 		fmt.Println("Verifying blob attestations...")
@@ -461,4 +465,37 @@ func handleBlobVerification(ctx context.Context, artifactRef string, org string,
 	}
 
 	return sigs, nil
+}
+
+// demonstrates how to use the GetFromGitHub function
+func ExampleGetFromGitHub() {
+	ctx := context.Background()
+
+	// verifying a container image with source repo ref
+	sigs, err := GetFromGitHub(
+		ctx,
+		"sha256:abc123def456",
+		"myorg",
+		"ghp_123456789",
+		ExampleContainerOptions,
+	)
+	if err != nil {
+		fmt.Printf("Failed to verify container: %v\n", err)
+		return
+	}
+	fmt.Printf("Successfully verified %d signatures and source repository ref\n", len(sigs))
+
+	// verifying a blob with source repo ref
+	sigs, err = GetFromGitHub(
+		ctx,
+		"", // digest will be calculated from blob
+		"myorg",
+		"ghp_123456789",
+		ExampleBlobOptions,
+	)
+	if err != nil {
+		fmt.Printf("Failed to verify blob: %v\n", err)
+		return
+	}
+	fmt.Printf("Successfully verified %d signatures and source repository ref\n", len(sigs))
 }
