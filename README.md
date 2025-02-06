@@ -33,8 +33,6 @@ A tool for verifying GitHub Artifact Attestations using cosign.
 - Access to the GitHub Container Registry (ghcr.io)
 - Docker login to ghcr.io (`docker login ghcr.io`) for container image verification
 
-## About
-
 This tool verifies GitHub Artifact Attestations using cosign. It supports the verification of attestations in the [`NewBundleFormat`](https://github.com/sigstore/sigstore-go/blob/v0.6.2/pkg/bundle/bundle.go#L59) (e.g., [GitHub Artifact Attestations, npm Provenance, HomebrewProvenance, etc](https://blog.sigstore.dev/cosign-verify-bundles/)).
 
 ## Verification Process
@@ -116,17 +114,11 @@ All command line flags can be set via environment variables with the `GITHUB_` p
 
 ## Examples
 
-Verify an image using its digest (long form):
+Verify an image using its digest:
 
 ```bash
 export GITHUB_AUTH_TOKEN=your_token
-autogov-verify --owner liatrio --cert-identity "https://github.com/owner/repo/.github/workflows/workflow.yaml@refs/heads/main" --artifact-digest sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682
-```
-
-Verify an image using shorthand flags:
-
-```bash
-autogov-verify -o liatrio -i "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main" -d sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682 -q
+autogov-verify -o liatrio -i "https://github.com/owner/repo/.github/workflows/workflow.yaml@refs/heads/main" -d sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682
 ```
 
 Using environment variables:
