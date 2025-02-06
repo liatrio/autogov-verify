@@ -32,6 +32,7 @@ func init() {
 	rootCmd.Flags().String("blob-path", "", "Path to a blob file to verify attestations against")
 	rootCmd.Flags().StringP("cert-identity", "i", "", "Certificate identity to verify against")
 	rootCmd.Flags().StringP("cert-issuer", "s", "https://token.actions.githubusercontent.com", "Certificate issuer to verify against")
+	rootCmd.Flags().StringP("expected-ref", "r", "", "Expected repository ref to verify against (e.g., refs/heads/main)")
 	rootCmd.Flags().BoolP("quiet", "q", false, "Only show errors and final results")
 
 	_ = rootCmd.MarkFlagRequired("owner")
@@ -59,10 +60,9 @@ func init() {
 		panic(fmt.Sprintf("failed to bind flags: %v", err))
 	}
 
-	for _, env := range []string{"AUTH_TOKEN", "TOKEN", "GH_TOKEN", "GITHUB_TOKEN"} {
-		if err := viper.BindEnv(env); err != nil {
-			panic(fmt.Sprintf("failed to bind %s env var: %v", env, err))
-		}
+	// bind environment variables for GitHub token
+	if err := viper.BindEnv("token", "GH_TOKEN", "GITHUB_TOKEN", "GITHUB_AUTH_TOKEN"); err != nil {
+		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
 	}
 }
 
@@ -76,16 +76,7 @@ func parseDigestFromOCIRef(ref string) string {
 
 func run(cmd *cobra.Command, args []string) error {
 	// check auth token
-	token := viper.GetString("AUTH_TOKEN")
-	if token == "" {
-		token = viper.GetString("TOKEN")
-	}
-	if token == "" {
-		token = viper.GetString("GH_TOKEN")
-	}
-	if token == "" {
-		token = viper.GetString("GITHUB_TOKEN")
-	}
+	token := viper.GetString("token")
 	if token == "" {
 		return fmt.Errorf("GH_TOKEN, GITHUB_TOKEN or GITHUB_AUTH_TOKEN environment variable is required")
 	}
@@ -106,6 +97,7 @@ func run(cmd *cobra.Command, args []string) error {
 			CertIdentity: viper.GetString("cert-identity"),
 			CertIssuer:   viper.GetString("cert-issuer"),
 			BlobPath:     viper.GetString("blob-path"),
+			ExpectedRef:  viper.GetString("expected-ref"),
 			Quiet:        quiet,
 		},
 	)

@@ -13,12 +13,20 @@ import (
 	"github.com/sigstore/cosign/v2/pkg/oci/static"
 )
 
+func getGitHubToken(t *testing.T) string {
+	// check for gh tokens
+	for _, envVar := range []string{"GITHUB_TOKEN", "GH_TOKEN", "GITHUB_AUTH_TOKEN"} {
+		if token := os.Getenv(envVar); token != "" {
+			return token
+		}
+	}
+	t.Skip("No GitHub token found. Set GITHUB_TOKEN, GH_TOKEN, or GITHUB_AUTH_TOKEN")
+	return ""
+}
+
 func TestGetFromGitHub(t *testing.T) {
 	// skip if no GitHub token available
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" {
-		t.Skip("GITHUB_TOKEN not set")
-	}
+	token := getGitHubToken(t)
 
 	tests := []struct {
 		name        string
@@ -61,10 +69,7 @@ func TestGetFromGitHub(t *testing.T) {
 
 func TestGetFromGitHubWithBlob(t *testing.T) {
 	// skip if no GitHub token available
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" {
-		t.Skip("GITHUB_TOKEN not set")
-	}
+	token := getGitHubToken(t)
 
 	// create temp test file
 	tmpDir := t.TempDir()
@@ -284,10 +289,7 @@ func TestVerifyAttestation(t *testing.T) {
 
 func TestHandleBlobVerification(t *testing.T) {
 	// skip if no GitHub token available
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" {
-		t.Skip("GITHUB_TOKEN not set")
-	}
+	token := getGitHubToken(t)
 
 	// create temp test file
 	tmpDir := t.TempDir()
