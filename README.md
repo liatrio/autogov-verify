@@ -87,6 +87,7 @@ autogov-verify -owner <owner> -cert-identity <identity> [options]
 ### Required Flags
 
 - `--owner, -o`: GitHub owner/organization name
+- `--workflow, -w`: Automated Governance Workflow repository to verify against (e.g., OWNER/REPO)
 - `--cert-identity, -i`: Certificate identity to verify against (GitHub Actions workflow URL)
 
 And one of the following:
@@ -118,7 +119,7 @@ Verify an image using its digest:
 
 ```bash
 export GITHUB_AUTH_TOKEN=your_token
-autogov-verify -o liatrio -i "https://github.com/owner/repo/.github/workflows/workflow.yaml@refs/heads/main" -d sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682
+./autogov-verify --wf-repo demo-gh-autogov-workflows --owner liatrio --artifact-digest sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682 --cert-identity "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/feat/add-dependency-scan" --expected-ref refs/heads/feat/add-dependency-scan
 ```
 
 Using environment variables:
