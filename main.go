@@ -30,7 +30,7 @@ func init() {
 	rootCmd.Flags().StringP("owner", "o", "", "GitHub owner/organization name (required)")
 	rootCmd.Flags().StringP("artifact-digest", "d", "", "Full OCI reference or digest of the artifact to verify (optional when using --blob-path)")
 	rootCmd.Flags().String("blob-path", "", "Path to a blob file to verify attestations against")
-	rootCmd.Flags().StringP("cert-identity", "i", "", "Certificate identity to verify against")
+	rootCmd.Flags().StringP("cert-identity", "i", "", "Certificate identity to verify against (required)")
 	rootCmd.Flags().StringP("cert-issuer", "s", "https://token.actions.githubusercontent.com", "Certificate issuer to verify against")
 	rootCmd.Flags().StringP("expected-ref", "r", "", "Expected repository ref to verify against (e.g., refs/heads/main)")
 	rootCmd.Flags().BoolP("quiet", "q", false, "Only show errors and final results")

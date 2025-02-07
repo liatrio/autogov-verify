@@ -4,12 +4,12 @@ go 1.23
 
 require (
 	github.com/cli/go-gh/v2 v2.11.2
-	github.com/google/go-containerregistry v0.20.2
 	github.com/google/go-github/v68 v68.0.0
 	github.com/sigstore/cosign/v2 v2.4.1
 	github.com/sigstore/sigstore-go v0.6.2
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
+	oras.land/oras-go/v2 v2.5.0
 )
 
 require (
@@ -115,6 +115,7 @@ require (
 	github.com/google/certificate-transparency-go v1.3.1 // indirect
 	github.com/google/gnostic-models v0.6.9-0.20230804172637-c7be7c783f49 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/google/go-containerregistry v0.20.2 // indirect
 	github.com/google/go-github/v55 v55.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
