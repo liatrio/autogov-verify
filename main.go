@@ -35,14 +35,21 @@ func init() {
 	rootCmd.Flags().StringP("expected-ref", "r", "", "Expected repository ref to verify against (e.g., refs/heads/main)")
 	rootCmd.Flags().BoolP("quiet", "q", false, "Only show errors and final results")
 
-	_ = rootCmd.MarkFlagRequired("owner")
-	_ = rootCmd.MarkFlagRequired("cert-identity")
-	_ = rootCmd.MarkFlagRequired("wf-repo")
-
 	rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		// check flags or env vars for config
 		owner := viper.GetString("owner")
 		if owner == "" {
-			return fmt.Errorf("owner is required")
+			return fmt.Errorf("owner is required (via --owner flag or OWNER env var)")
+		}
+
+		wfRepo := viper.GetString("wf-repo")
+		if wfRepo == "" {
+			return fmt.Errorf("workflow repository is required (via --wf-repo flag or WF_REPO env var)")
+		}
+
+		certIdentity := viper.GetString("cert-identity")
+		if certIdentity == "" {
+			return fmt.Errorf("certificate identity is required (via --cert-identity flag or CERT_IDENTITY env var)")
 		}
 
 		blobPath := viper.GetString("blob-path")
@@ -53,15 +60,30 @@ func init() {
 		return nil
 	}
 
-	viper.SetEnvPrefix("GITHUB")
-	viper.AutomaticEnv()
-
 	if err := viper.BindPFlags(rootCmd.Flags()); err != nil {
 		panic(fmt.Sprintf("failed to bind flags: %v", err))
 	}
 
-	// bind environment variables for GitHub token
+	// bind env vars
 	if err := viper.BindEnv("token", "GH_TOKEN", "GITHUB_TOKEN", "GITHUB_AUTH_TOKEN"); err != nil {
+		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+	}
+	if err := viper.BindEnv("owner", "OWNER"); err != nil {
+		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+	}
+	if err := viper.BindEnv("cert-identity", "CERT_IDENTITY"); err != nil {
+		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+	}
+	if err := viper.BindEnv("cert-issuer", "CERT_ISSUER"); err != nil {
+		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+	}
+	if err := viper.BindEnv("quiet", "QUIET"); err != nil {
+		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+	}
+	if err := viper.BindEnv("wf-repo", "WF_REPO"); err != nil {
+		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+	}
+	if err := viper.BindEnv("expected-ref", "EXPECTED_REF"); err != nil {
 		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
 	}
 }

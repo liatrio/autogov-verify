@@ -126,9 +126,10 @@ Using environment variables:
 
 ```bash
 export GITHUB_AUTH_TOKEN=your_token
-export GITHUB_OWNER=liatrio
-export GITHUB_CERT_IDENTITY="https://github.com/owner/repo/.github/workflows/workflow.yaml@refs/heads/main"
-export GITHUB_CERT_ISSUER=https://token.actions.githubusercontent.com
+export OWNER=liatrio
+export WF_REPO=demo-gh-autogov-workflows
+export CERT_IDENTITY="https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main"
+export CERT_ISSUER=https://token.actions.githubusercontent.com
 autogov-verify -d sha256:702bea33d240c2f0a1d87fe649a49b52f533bde2005b3c1bc0be7859dd5e4226
 ```
 
