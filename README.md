@@ -162,7 +162,7 @@ Common issues and solutions:
    - Ensure your GitHub token has the necessary permissions (packages:read)
    - Check that the token is properly set in environment variables
    - Verify you have access to the GitHub organization
-   - For container image verification, ensure you're logged into ghcr.io with `docker login ghcr.io`
+   - For container image verification, ensure you're logged into ghcr.io with `docker login ghcr.io` (e.g., [Classic Personal Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) with `read:packages` permissions)
 
 2. **Certificate Verification Failures**
    - Verify the certificate identity matches your GitHub Actions workflow
