@@ -6,13 +6,12 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/google/go-containerregistry/pkg/crane"
-	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-github/v68/github"
 	"github.com/liatrio/autogov-verify/pkg/root"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
@@ -20,6 +19,9 @@ import (
 	"github.com/sigstore/cosign/v2/pkg/oci"
 	"github.com/sigstore/cosign/v2/pkg/oci/static"
 	sigstore "github.com/sigstore/sigstore-go/pkg/bundle"
+	"oras.land/oras-go/v2/registry/remote"
+	"oras.land/oras-go/v2/registry/remote/auth"
+	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
 // example options
@@ -111,19 +113,8 @@ func GetFromGitHub(ctx context.Context, artifactRef string, org string, token st
 		return nil, fmt.Errorf("failed to write trusted root: %w", err)
 	}
 
-	// parse reference
-	ref, err := name.ParseReference(fmt.Sprintf("ghcr.io/%s/%s@%s", org, opts.Repository, artifactRef))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse reference: %w", err)
-	}
-
-	digest, ok := ref.(name.Digest)
-	if !ok {
-		return nil, fmt.Errorf("reference must be a digest, got %T", ref)
-	}
-
-	// get and write manifest
-	manifest, err := crane.Manifest(ref.String())
+	// fetch manifest
+	manifest, err := getManifestWithOras(ctx, org, opts.Repository, artifactRef, token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get manifest: %w", err)
 	}
@@ -135,7 +126,7 @@ func GetFromGitHub(ctx context.Context, artifactRef string, org string, token st
 
 	// get gh attestations
 	client := github.NewClient(nil).WithAuthToken(token)
-	atts, _, err := client.Organizations.ListAttestations(ctx, org, digest.DigestStr(), &github.ListOptions{})
+	atts, _, err := client.Organizations.ListAttestations(ctx, org, artifactRef, &github.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list attestations: %w", err)
 	}
@@ -179,6 +170,35 @@ func setDefaultOptions(opts Options) Options {
 		opts.CertIssuer = DefaultCertIssuer
 	}
 	return opts
+}
+
+// fetch manifest using oras
+func getManifestWithOras(ctx context.Context, org, repository, artifactRef string, token string) ([]byte, error) {
+	// create repo ref
+	repoRef := fmt.Sprintf("ghcr.io/%s/%s", org, repository)
+	repo, err := remote.NewRepository(repoRef)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create repository: %w", err)
+	}
+
+	// auth config
+	repo.Client = &auth.Client{
+		Client: retry.DefaultClient,
+		Cache:  auth.NewCache(),
+		Credential: auth.StaticCredential("ghcr.io", auth.Credential{
+			Username: org,
+			Password: token,
+		}),
+	}
+
+	// fetch manifest
+	_, manifestReader, err := repo.Manifests().FetchReference(ctx, artifactRef)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch manifest: %w", err)
+	}
+	defer manifestReader.Close()
+
+	return io.ReadAll(manifestReader)
 }
 
 func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPath, trust, cacheDir string, index int, opts Options) (oci.Signature, error) {
