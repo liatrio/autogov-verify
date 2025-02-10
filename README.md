@@ -22,7 +22,7 @@
 
 # GitHub Attestation Verifier
 
-A tool for verifying GitHub Artifact Attestations using cosign.
+A tool for verifying GitHub Artifact Attestations using [cosign](https://docs.sigstore.dev/cosign/overview/).
 
 > **Note**: This tool supports attestations for container images in the GitHub Container Registry (ghcr.io) and blob attestations.
 
@@ -52,6 +52,41 @@ Each attestation is verified against:
 - The specified certificate identity (GitHub Actions workflow)
 - The certificate issuer (GitHub Actions OIDC provider)
 
+## Authentication
+
+The tool supports two methods of GitHub authentication:
+
+1. **Auto-detection** (Recommended):
+   - Uses `go-gh` to automatically detect credentials from:
+     - Environment variables (`GH_TOKEN`, `GITHUB_TOKEN`, `GITHUB_AUTH_TOKEN`)
+     - GitHub CLI configuration
+     - System keyring
+
+2. **Manual Configuration**:
+   - Set environment variables directly:
+
+     ```bash
+     export GH_TOKEN=your_token_here
+     # or
+     export GITHUB_TOKEN=your_token_here
+     # or
+     export GITHUB_AUTH_TOKEN=your_token_here
+     ```
+
+The token (either a [Classic Personal Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) or a Fine-grained Personal Access Token) needs to have:
+
+- `read:packages` permission to access GitHub Container Registry (required for container image verification)
+- `repo` permission if verifying private repository artifacts
+- Access to the organization/repository you're trying to verify
+
+> **Note**: For container image verification, you must be logged into ghcr.io:
+>
+>```bash
+> echo $GH_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+> ```
+>
+> The same token can be used for both GitHub API access and Docker login.
+
 ## Installation
 
 ```bash
@@ -78,6 +113,7 @@ For development, you'll need:
 - Go 1.21 or higher
 - golangci-lint (for linting)
 - A GitHub Personal Access Token with appropriate organization permissions for testing
+  - Set the token as the `GITHUB_AUTH_TOKEN` environment variable to run tests
 
 ## Usage
 
@@ -92,10 +128,11 @@ autogov-verify -cert-identity <identity> [options]
   - Format: `https://github.com/OWNER/REPO/.github/workflows/...`
 
 And one of the following:
+
 - `--artifact-digest, -d`: Full OCI reference for container verification in the format `[registry/]org/repo[:tag]@sha256:hash` (e.g., `ghcr.io/owner/repo@sha256:hash` or `owner/repo@sha256:hash`)
   - The registry is optional and defaults to ghcr.io
   - The tag is optional and doesn't affect verification
-- `--blob-path`: Path to a blob file to verify attestations against
+- `--blob-path`: Path to a blob file to verify attestations against (e.g., `--blob-path /path/to/file.txt`)
 
 ### Optional Flags
 
@@ -174,10 +211,10 @@ Attestation Types:
 Common issues and solutions:
 
 1. **Authentication Errors**
-   - Ensure your GitHub token has the necessary permissions (packages:read)
+   - Ensure your GitHub token has the necessary permissions (see Authentication section above)
    - Check that the token is properly set in environment variables
    - Verify you have access to the GitHub organization
-   - For container image verification, ensure you're logged into ghcr.io with `docker login ghcr.io` (e.g., [Classic Personal Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) with `read:packages` / `repo` permissions)
+   - For container image verification, ensure you're logged into ghcr.io
 
 2. **Certificate Verification Failures**
    - Verify the certificate identity matches your GitHub Actions workflow
@@ -193,6 +230,8 @@ Common issues and solutions:
 4. **Invalid Digest Format**
    - Ensure the digest follows the format: `sha256:hash`
    - When using full OCI references, include the registry: `ghcr.io/owner/repo@sha256:hash`
+
+If you encounter any other issues, please [open an issue](https://github.com/liatrio/autogov-verify/issues/new) and include as much detail as possible.
 
 ## License
 

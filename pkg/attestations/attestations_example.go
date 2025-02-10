@@ -3,6 +3,10 @@ package attestations
 import (
 	"context"
 	"fmt"
+
+	"github.com/cli/go-gh/v2/pkg/auth"
+	"github.com/google/go-github/v68/github"
+	"github.com/sigstore/cosign/v2/pkg/oci"
 )
 
 // example options
@@ -36,11 +40,21 @@ var (
 func ExampleGetFromGitHub() {
 	ctx := context.Background()
 
+	// Option 1: Auto-detect GitHub token using go-gh
+	// This will check environment variables, gh config, and system keyring
+	token, _ := auth.TokenForHost("github.com") // ignore error for example
+	client := github.NewClient(nil).WithAuthToken(token)
+
+	// Option 2: Manual client configuration
+	// client := github.NewClient(nil).WithAuthToken(os.Getenv("GH_TOKEN"))
+
 	// verifying a container image with source repo ref
-	sigs, err := GetFromGitHub(
+	var sigs []oci.Signature
+	var err error
+	sigs, err = GetFromGitHub(
 		ctx,
 		"myorg/my-container-repo@sha256:abc123def456789012345678901234567890123456789012345678901234",
-		"ghp_123456789",
+		client,
 		ExampleContainerOptions,
 	)
 	if err != nil {
@@ -53,7 +67,7 @@ func ExampleGetFromGitHub() {
 	sigs, err = GetFromGitHub(
 		ctx,
 		"myorg/my-repo@", // for blob verification, digest can be empty as it will be calculated from the blobPath
-		"ghp_123456789",
+		client,
 		ExampleBlobOptions,
 	)
 	if err != nil {

@@ -137,18 +137,37 @@ func digestToFileName(digest string) string {
 	return fmt.Sprintf("%s.json", strings.Replace(digest, ":", "-", 1))
 }
 
+// creates a temp dir and returns its path along with cleanup func
+func CreateTempDir(prefix string) (string, func(), error) {
+	tmpDir, err := os.MkdirTemp(os.TempDir(), prefix)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	cleanup := func() {
+		if err := CleanupTempDir(tmpDir); err != nil {
+			// triggers log error, but don't fail since this is cleanup
+			fmt.Printf("Warning: failed to cleanup temp directory %s: %v\n", tmpDir, err)
+		}
+	}
+	return tmpDir, cleanup, nil
+}
+
 // returns the default dir for storing attestations
 func getDefaultDir() string {
 	// create temp dir
-	tmpDir, err := os.MkdirTemp("", "attestation-signatures-")
+	tmpDir, cleanup, err := CreateTempDir("attestation-signatures-")
 	if err != nil {
 		// fallback to current dir if temp creation fails
 		return "."
 	}
+	// ensure cleanup is called
+	if cleanup != nil {
+		cleanup()
+	}
 	return tmpDir
 }
 
-// removes temp dir
+// removes temp dir if it's under os.TempDir()
 func CleanupTempDir(dirPath string) error {
 	if strings.HasPrefix(dirPath, os.TempDir()) {
 		return os.RemoveAll(dirPath)

@@ -3,12 +3,15 @@ package attestations
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-github/v68/github"
 	"github.com/liatrio/autogov-verify/pkg/root"
+	"github.com/liatrio/autogov-verify/pkg/storage"
 	"github.com/sigstore/cosign/v2/pkg/oci"
 	"github.com/sigstore/cosign/v2/pkg/oci/static"
 )
@@ -74,7 +77,8 @@ func TestGetFromGitHub(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := GetFromGitHub(context.Background(), tt.imageRef, token, tt.opts)
+			client := github.NewClient(nil).WithAuthToken(token)
+			_, err := GetFromGitHub(context.Background(), tt.imageRef, client, tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetFromGitHub() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -113,7 +117,8 @@ func TestGetFromGitHubWithBlob(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := GetFromGitHub(context.Background(), tt.imageRef, token, tt.opts)
+			client := github.NewClient(nil).WithAuthToken(token)
+			_, err := GetFromGitHub(context.Background(), tt.imageRef, client, tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetFromGitHub() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -153,7 +158,8 @@ func TestValidateInputs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := GetFromGitHub(context.Background(), tt.imageRef, tt.token, tt.opts)
+			client := github.NewClient(nil).WithAuthToken(tt.token)
+			_, err := GetFromGitHub(context.Background(), tt.imageRef, client, tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetFromGitHub() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -186,20 +192,20 @@ func TestReadWriteDir(t *testing.T) {
 	}
 
 	// test WriteToDir
-	err := WriteToDir(context.Background(), tmpDir, testDigest, testSigs)
+	err := storage.WriteAttestationsToDir(context.Background(), tmpDir, testDigest, testSigs)
 	if err != nil {
 		t.Fatalf("WriteToDir() error = %v", err)
 	}
 
 	// verify file exists
-	filename := digestToFileName(testDigest)
+	filename := fmt.Sprintf("%s.json", strings.Replace(testDigest, ":", "-", 1))
 	filePath := filepath.Join(tmpDir, filename)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		t.Errorf("WriteToDir() did not create file at %s", filePath)
 	}
 
 	// test ReadFromDir
-	sigs, err := ReadFromDir(context.Background(), tmpDir, testDigest)
+	sigs, err := storage.ReadAttestationsFromDir(context.Background(), tmpDir, testDigest)
 	if err != nil {
 		t.Fatalf("ReadFromDir() error = %v", err)
 	}
@@ -225,12 +231,12 @@ func TestReadWriteDir(t *testing.T) {
 	}
 
 	// error cases
-	_, err = ReadFromDir(context.Background(), tmpDir, "invalid-digest")
+	_, err = storage.ReadAttestationsFromDir(context.Background(), tmpDir, "invalid-digest")
 	if err == nil {
 		t.Error("ReadFromDir() with invalid digest should return error")
 	}
 
-	err = WriteToDir(context.Background(), "/nonexistent/dir", testDigest, testSigs)
+	err = storage.WriteAttestationsToDir(context.Background(), "/nonexistent/dir", testDigest, testSigs)
 	if err == nil {
 		t.Error("WriteToDir() with invalid directory should return error")
 	}
@@ -322,7 +328,8 @@ func TestHandleBlobVerification(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := GetFromGitHub(context.Background(), tt.imageRef, token, tt.opts)
+			client := github.NewClient(nil).WithAuthToken(token)
+			_, err := GetFromGitHub(context.Background(), tt.imageRef, client, tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("handleBlobVerification() error = %v, wantErr %v", err, tt.wantErr)
 			}

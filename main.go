@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/google/go-github/v68/github"
 	"github.com/liatrio/autogov-verify/pkg/attestations"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -84,7 +85,7 @@ func run(cmd *cobra.Command, args []string) error {
 	sigs, err := attestations.GetFromGitHub(
 		context.Background(),
 		viper.GetString("artifact-digest"),
-		token,
+		github.NewClient(nil).WithAuthToken(token),
 		attestations.Options{
 			CertIdentity: viper.GetString("cert-identity"),
 			CertIssuer:   viper.GetString("cert-issuer"),
