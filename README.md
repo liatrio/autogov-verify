@@ -81,13 +81,11 @@ For development, you'll need:
 ## Usage
 
 ```bash
-autogov-verify -owner <owner> -cert-identity <identity> [options]
+autogov-verify -cert-identity <identity> [options]
 ```
 
 ### Required Flags
 
-- `--owner, -o`: GitHub owner/organization name
-- `--workflow, -w`: Automated Governance Workflow repository to verify against (e.g., OWNER/REPO)
 - `--cert-identity, -i`: Certificate identity to verify against (GitHub Actions workflow URL)
 
 And one of the following:
@@ -97,7 +95,10 @@ And one of the following:
 
 ### Optional Flags
 
+- `--owner, -o`: GitHub owner/organization name (defaults to owner from cert-identity)
+- `--wf-repo, -w`: Workflow repository name (defaults to repo from cert-identity)
 - `--cert-issuer, -s`: Certificate issuer to verify against (default: <https://token.actions.githubusercontent.com>)
+- `--expected-ref, -r`: Expected repository ref to verify against (e.g., refs/heads/main)
 - `--quiet, -q`: Only show errors and final results
 
 ### Environment Variables
@@ -106,23 +107,28 @@ The following environment variables can be used for authentication:
 
 - `GH_TOKEN`, `GITHUB_TOKEN`, or `GITHUB_AUTH_TOKEN`: GitHub personal access token with read access to packages
 
-All command line flags can be set via environment variables with the `GITHUB_` prefix:
+All command line flags can be set via environment variables:
 
-- `GITHUB_OWNER`: Alternative to --owner flag
-- `GITHUB_CERT_IDENTITY`: Alternative to --cert-identity flag
-- `GITHUB_CERT_ISSUER`: Alternative to --cert-issuer flag
-- `GITHUB_QUIET`: Alternative to --quiet flag
+- `OWNER`: Alternative to --owner flag (optional, defaults to owner from cert-identity)
+- `WF_REPO`: Alternative to --wf-repo flag (optional, defaults to repo from cert-identity)
+- `CERT_IDENTITY`: Alternative to --cert-identity flag
+- `CERT_ISSUER`: Alternative to --cert-issuer flag
+- `EXPECTED_REF`: Alternative to --expected-ref flag
+- `QUIET`: Alternative to --quiet flag
 
 ## Examples
 
-Verify an image using its digest:
+Verify an image using its digest (owner and repo derived from cert-identity):
 
 ```bash
 export GITHUB_AUTH_TOKEN=your_token
-./autogov-verify --wf-repo demo-gh-autogov-workflows --owner liatrio --artifact-digest sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682 --cert-identity "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/feat/add-dependency-scan" --expected-ref refs/heads/feat/add-dependency-scan
+autogov-verify \
+  --cert-identity "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/feat/add-dependency-scan" \
+  --artifact-digest sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682 \
+  --expected-ref refs/heads/feat/add-dependency-scan
 ```
 
-Using environment variables:
+Using environment variables and explicit owner/repo:
 
 ```bash
 export GITHUB_AUTH_TOKEN=your_token

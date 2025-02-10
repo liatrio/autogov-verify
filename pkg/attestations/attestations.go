@@ -95,11 +95,6 @@ func GetFromGitHub(ctx context.Context, artifactRef string, org string, token st
 		return handleBlobVerification(ctx, artifactRef, org, token, opts)
 	}
 
-	// validate repository is set for container verification
-	if opts.Repository == "" {
-		return nil, fmt.Errorf("repository is required for container verification")
-	}
-
 	// create verify dir
 	cacheDir, err := os.MkdirTemp(os.TempDir(), "attestations-*")
 	if err != nil {

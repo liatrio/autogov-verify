@@ -26,8 +26,8 @@ certificate identity and issuer.`,
 
 func init() {
 	// flags
-	rootCmd.Flags().StringP("wf-repo", "w", "", "autogov workflow repository name (required)")
-	rootCmd.Flags().StringP("owner", "o", "", "GitHub owner/organization name (required)")
+	rootCmd.Flags().StringP("wf-repo", "w", "", "autogov workflow repository name (optional, defaults to repo from cert-identity)")
+	rootCmd.Flags().StringP("owner", "o", "", "GitHub owner/organization name (optional, defaults to owner from cert-identity)")
 	rootCmd.Flags().StringP("artifact-digest", "d", "", "Full OCI reference or digest of the artifact to verify (optional when using --blob-path)")
 	rootCmd.Flags().String("blob-path", "", "Path to a blob file to verify attestations against")
 	rootCmd.Flags().StringP("cert-identity", "i", "", "Certificate identity to verify against (required)")
@@ -36,17 +36,6 @@ func init() {
 	rootCmd.Flags().BoolP("quiet", "q", false, "Only show errors and final results")
 
 	rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		// check flags or env vars for config
-		owner := viper.GetString("owner")
-		if owner == "" {
-			return fmt.Errorf("owner is required (via --owner flag or OWNER env var)")
-		}
-
-		wfRepo := viper.GetString("wf-repo")
-		if wfRepo == "" {
-			return fmt.Errorf("workflow repository is required (via --wf-repo flag or WF_REPO env var)")
-		}
-
 		certIdentity := viper.GetString("cert-identity")
 		if certIdentity == "" {
 			return fmt.Errorf("certificate identity is required (via --cert-identity flag or CERT_IDENTITY env var)")
@@ -96,11 +85,36 @@ func parseDigestFromOCIRef(ref string) string {
 	return ref
 }
 
+// extracts owner and repo from cert-identity URL
+func parseOwnerAndRepo(certIdentity string) (owner, repo string) {
+	// example: https://github.com/OWNER/REPO/.github/workflows/workflow.yml@ref
+	parts := strings.Split(certIdentity, "/")
+	if len(parts) < 5 {
+		return "", ""
+	}
+	return parts[3], parts[4]
+}
+
 func run(cmd *cobra.Command, args []string) error {
 	// check auth token
 	token := viper.GetString("token")
 	if token == "" {
 		return fmt.Errorf("GH_TOKEN, GITHUB_TOKEN or GITHUB_AUTH_TOKEN environment variable is required")
+	}
+
+	certIdentity := viper.GetString("cert-identity")
+	owner := viper.GetString("owner")
+	wfRepo := viper.GetString("wf-repo")
+
+	// if no owner or wf-repo, parse from cert-identity
+	if owner == "" || wfRepo == "" {
+		parsedOwner, parsedRepo := parseOwnerAndRepo(certIdentity)
+		if owner == "" {
+			owner = parsedOwner
+		}
+		if wfRepo == "" {
+			wfRepo = parsedRepo
+		}
 	}
 
 	quiet := viper.GetBool("quiet")
@@ -112,11 +126,11 @@ func run(cmd *cobra.Command, args []string) error {
 	sigs, err := attestations.GetFromGitHub(
 		context.Background(),
 		parseDigestFromOCIRef(viper.GetString("artifact-digest")),
-		viper.GetString("owner"),
+		owner,
 		token,
 		attestations.Options{
-			Repository:   viper.GetString("wf-repo"),
-			CertIdentity: viper.GetString("cert-identity"),
+			Repository:   wfRepo,
+			CertIdentity: certIdentity,
 			CertIssuer:   viper.GetString("cert-issuer"),
 			BlobPath:     viper.GetString("blob-path"),
 			ExpectedRef:  viper.GetString("expected-ref"),
