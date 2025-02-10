@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 
 	"github.com/liatrio/autogov-verify/pkg/attestations"
 	"github.com/spf13/cobra"
@@ -26,9 +25,7 @@ certificate identity and issuer.`,
 
 func init() {
 	// flags
-	rootCmd.Flags().StringP("wf-repo", "w", "", "autogov workflow repository name (optional, defaults to repo from cert-identity)")
-	rootCmd.Flags().StringP("owner", "o", "", "GitHub owner/organization name (optional, defaults to owner from cert-identity)")
-	rootCmd.Flags().StringP("artifact-digest", "d", "", "Full OCI reference or digest of the artifact to verify (optional when using --blob-path)")
+	rootCmd.Flags().StringP("artifact-digest", "d", "", "Full OCI reference in the format [registry/]org/repo[:tag]@digest")
 	rootCmd.Flags().String("blob-path", "", "Path to a blob file to verify attestations against")
 	rootCmd.Flags().StringP("cert-identity", "i", "", "Certificate identity to verify against (required)")
 	rootCmd.Flags().StringP("cert-issuer", "s", "https://token.actions.githubusercontent.com", "Certificate issuer to verify against")
@@ -57,9 +54,6 @@ func init() {
 	if err := viper.BindEnv("token", "GH_TOKEN", "GITHUB_TOKEN", "GITHUB_AUTH_TOKEN"); err != nil {
 		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
 	}
-	if err := viper.BindEnv("owner", "OWNER"); err != nil {
-		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
-	}
 	if err := viper.BindEnv("cert-identity", "CERT_IDENTITY"); err != nil {
 		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
 	}
@@ -69,30 +63,9 @@ func init() {
 	if err := viper.BindEnv("quiet", "QUIET"); err != nil {
 		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
 	}
-	if err := viper.BindEnv("wf-repo", "WF_REPO"); err != nil {
-		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
-	}
 	if err := viper.BindEnv("expected-ref", "EXPECTED_REF"); err != nil {
 		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
 	}
-}
-
-func parseDigestFromOCIRef(ref string) string {
-	if strings.Contains(ref, "@") {
-		parts := strings.Split(ref, "@")
-		return parts[len(parts)-1]
-	}
-	return ref
-}
-
-// extracts owner and repo from cert-identity URL
-func parseOwnerAndRepo(certIdentity string) (owner, repo string) {
-	// example: https://github.com/OWNER/REPO/.github/workflows/workflow.yml@ref
-	parts := strings.Split(certIdentity, "/")
-	if len(parts) < 5 {
-		return "", ""
-	}
-	return parts[3], parts[4]
 }
 
 func run(cmd *cobra.Command, args []string) error {
@@ -100,21 +73,6 @@ func run(cmd *cobra.Command, args []string) error {
 	token := viper.GetString("token")
 	if token == "" {
 		return fmt.Errorf("GH_TOKEN, GITHUB_TOKEN or GITHUB_AUTH_TOKEN environment variable is required")
-	}
-
-	certIdentity := viper.GetString("cert-identity")
-	owner := viper.GetString("owner")
-	wfRepo := viper.GetString("wf-repo")
-
-	// if no owner or wf-repo, parse from cert-identity
-	if owner == "" || wfRepo == "" {
-		parsedOwner, parsedRepo := parseOwnerAndRepo(certIdentity)
-		if owner == "" {
-			owner = parsedOwner
-		}
-		if wfRepo == "" {
-			wfRepo = parsedRepo
-		}
 	}
 
 	quiet := viper.GetBool("quiet")
@@ -125,12 +83,10 @@ func run(cmd *cobra.Command, args []string) error {
 
 	sigs, err := attestations.GetFromGitHub(
 		context.Background(),
-		parseDigestFromOCIRef(viper.GetString("artifact-digest")),
-		owner,
+		viper.GetString("artifact-digest"),
 		token,
 		attestations.Options{
-			Repository:   wfRepo,
-			CertIdentity: certIdentity,
+			CertIdentity: viper.GetString("cert-identity"),
 			CertIssuer:   viper.GetString("cert-issuer"),
 			BlobPath:     viper.GetString("blob-path"),
 			ExpectedRef:  viper.GetString("expected-ref"),

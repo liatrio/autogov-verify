@@ -17,7 +17,6 @@ const (
 // example container/blob options
 var (
 	ExampleContainerOptions = Options{
-		Repository:   "my-container-repo",
 		ExpectedRef:  "refs/heads/main",
 		CertIdentity: "https://github.com/myorg/myrepo/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main",
 		CertIssuer:   DefaultCertIssuer,
@@ -40,8 +39,7 @@ func ExampleGetFromGitHub() {
 	// verifying a container image with source repo ref
 	sigs, err := GetFromGitHub(
 		ctx,
-		"sha256:abc123def456",
-		"myorg",
+		"myorg/my-container-repo@sha256:abc123def456789012345678901234567890123456789012345678901234",
 		"ghp_123456789",
 		ExampleContainerOptions,
 	)
@@ -54,8 +52,7 @@ func ExampleGetFromGitHub() {
 	// verifying a blob with source repo ref
 	sigs, err = GetFromGitHub(
 		ctx,
-		"", // digest will be calculated from blob
-		"myorg",
+		"myorg/my-repo@", // for blob verification, digest can be empty as it will be calculated from the blobPath
 		"ghp_123456789",
 		ExampleBlobOptions,
 	)

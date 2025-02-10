@@ -29,16 +29,14 @@ func TestGetFromGitHub(t *testing.T) {
 	token := getGitHubToken(t)
 
 	tests := []struct {
-		name        string
-		artifactRef string
-		org         string
-		opts        Options
-		wantErr     bool
+		name     string
+		imageRef string
+		opts     Options
+		wantErr  bool
 	}{
 		{
-			name:        "invalid org",
-			artifactRef: "sha256:abc123",
-			org:         "invalid-org-that-does-not-exist",
+			name:     "invalid org",
+			imageRef: "invalid-org/repo@sha256:abc123def456789012345678901234567890123456789012345678901234",
 			opts: Options{
 				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
 				CertIssuer:   "https://token.actions.githubusercontent.com",
@@ -46,9 +44,26 @@ func TestGetFromGitHub(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:        "invalid digest",
-			artifactRef: "invalid-digest",
-			org:         "liatrio",
+			name:     "invalid digest",
+			imageRef: "liatrio/repo@invalid-digest",
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
+				CertIssuer:   "https://token.actions.githubusercontent.com",
+			},
+			wantErr: true,
+		},
+		{
+			name:     "with registry",
+			imageRef: "ghcr.io/liatrio/repo@sha256:abc123def456789012345678901234567890123456789012345678901234",
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
+				CertIssuer:   "https://token.actions.githubusercontent.com",
+			},
+			wantErr: true,
+		},
+		{
+			name:     "with tag",
+			imageRef: "liatrio/repo:latest@sha256:abc123def456789012345678901234567890123456789012345678901234",
 			opts: Options{
 				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
 				CertIssuer:   "https://token.actions.githubusercontent.com",
@@ -59,7 +74,7 @@ func TestGetFromGitHub(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := GetFromGitHub(context.Background(), tt.artifactRef, tt.org, token, tt.opts)
+			_, err := GetFromGitHub(context.Background(), tt.imageRef, token, tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetFromGitHub() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -79,16 +94,14 @@ func TestGetFromGitHubWithBlob(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		artifactRef string
-		org         string
-		opts        Options
-		wantErr     bool
+		name     string
+		imageRef string
+		opts     Options
+		wantErr  bool
 	}{
 		{
-			name:        "blob with no attestations",
-			artifactRef: "",
-			org:         "liatrio",
+			name:     "blob with no attestations",
+			imageRef: "liatrio/repo@sha256:abc123def456789012345678901234567890123456789012345678901234",
 			opts: Options{
 				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
 				CertIssuer:   "https://token.actions.githubusercontent.com",
@@ -100,7 +113,7 @@ func TestGetFromGitHubWithBlob(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := GetFromGitHub(context.Background(), tt.artifactRef, tt.org, token, tt.opts)
+			_, err := GetFromGitHub(context.Background(), tt.imageRef, token, tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetFromGitHub() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -110,46 +123,29 @@ func TestGetFromGitHubWithBlob(t *testing.T) {
 
 func TestValidateInputs(t *testing.T) {
 	tests := []struct {
-		name        string
-		artifactRef string
-		org         string
-		token       string
-		opts        Options
-		wantErr     bool
+		name     string
+		imageRef string
+		token    string
+		opts     Options
+		wantErr  bool
 	}{
 		{
-			name:        "valid inputs",
-			artifactRef: "sha256:abc123def456789012345678901234567890123456789012345678901234",
-			org:         "liatrio",
-			token:       "test-token",
+			name:     "valid inputs",
+			imageRef: "liatrio/repo@sha256:abc123def456789012345678901234567890123456789012345678901234",
+			token:    "test-token",
 			opts: Options{
 				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
 				CertIssuer:   "https://token.actions.githubusercontent.com",
-				Repository:   "autogov-verify",
 			},
 			wantErr: true,
 		},
 		{
-			name:        "empty artifact ref",
-			artifactRef: "",
-			org:         "liatrio",
-			token:       "test-token",
+			name:     "empty artifact ref",
+			imageRef: "",
+			token:    "test-token",
 			opts: Options{
 				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
 				CertIssuer:   "https://token.actions.githubusercontent.com",
-				Repository:   "autogov-verify",
-			},
-			wantErr: true,
-		},
-		{
-			name:        "empty org",
-			artifactRef: "sha256:abc123def456789012345678901234567890123456789012345678901234",
-			org:         "",
-			token:       "test-token",
-			opts: Options{
-				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
-				CertIssuer:   "https://token.actions.githubusercontent.com",
-				Repository:   "autogov-verify",
 			},
 			wantErr: true,
 		},
@@ -157,7 +153,7 @@ func TestValidateInputs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := GetFromGitHub(context.Background(), tt.artifactRef, tt.org, tt.token, tt.opts)
+			_, err := GetFromGitHub(context.Background(), tt.imageRef, tt.token, tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetFromGitHub() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -241,9 +237,7 @@ func TestReadWriteDir(t *testing.T) {
 }
 
 func TestSetDefaultOptions(t *testing.T) {
-	opts := Options{
-		Repository: "autogov-verify",
-	}
+	opts := Options{}
 	opts = setDefaultOptions(opts)
 
 	if opts.CertIssuer != DefaultCertIssuer {
@@ -299,16 +293,14 @@ func TestHandleBlobVerification(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		artifactRef string
-		org         string
-		opts        Options
-		wantErr     bool
+		name     string
+		imageRef string
+		opts     Options
+		wantErr  bool
 	}{
 		{
-			name:        "valid blob",
-			artifactRef: "",
-			org:         "liatrio",
+			name:     "valid blob",
+			imageRef: "liatrio/repo@sha256:abc123def456789012345678901234567890123456789012345678901234",
 			opts: Options{
 				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
 				CertIssuer:   DefaultCertIssuer,
@@ -317,9 +309,8 @@ func TestHandleBlobVerification(t *testing.T) {
 			wantErr: true, // expect error since we don't have real attestations
 		},
 		{
-			name:        "invalid blob path",
-			artifactRef: "sha256:abc123",
-			org:         "liatrio",
+			name:     "invalid blob path",
+			imageRef: "liatrio/repo@sha256:abc123def456789012345678901234567890123456789012345678901234",
 			opts: Options{
 				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
 				CertIssuer:   DefaultCertIssuer,
@@ -331,9 +322,76 @@ func TestHandleBlobVerification(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := handleBlobVerification(context.Background(), tt.artifactRef, tt.org, token, tt.opts)
+			_, err := GetFromGitHub(context.Background(), tt.imageRef, token, tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("handleBlobVerification() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParseImageRef(t *testing.T) {
+	tests := []struct {
+		name       string
+		ref        string
+		wantOrg    string
+		wantRepo   string
+		wantDigest string
+		wantErr    bool
+	}{
+		{
+			name:       "basic reference",
+			ref:        "liatrio/repo@sha256:abc123",
+			wantOrg:    "liatrio",
+			wantRepo:   "repo",
+			wantDigest: "sha256:abc123",
+			wantErr:    false,
+		},
+		{
+			name:       "with registry",
+			ref:        "ghcr.io/liatrio/repo@sha256:abc123",
+			wantOrg:    "liatrio",
+			wantRepo:   "repo",
+			wantDigest: "sha256:abc123",
+			wantErr:    false,
+		},
+		{
+			name:       "with tag",
+			ref:        "liatrio/repo:latest@sha256:abc123",
+			wantOrg:    "liatrio",
+			wantRepo:   "repo",
+			wantDigest: "sha256:abc123",
+			wantErr:    false,
+		},
+		{
+			name:    "no digest",
+			ref:     "liatrio/repo",
+			wantErr: true,
+		},
+		{
+			name:    "invalid format",
+			ref:     "invalid@sha256:abc123",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			org, repo, digest, err := ParseImageRef(tt.ref)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseImageRef() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				if org != tt.wantOrg {
+					t.Errorf("ParseImageRef() org = %v, want %v", org, tt.wantOrg)
+				}
+				if repo != tt.wantRepo {
+					t.Errorf("ParseImageRef() repo = %v, want %v", repo, tt.wantRepo)
+				}
+				if digest != tt.wantDigest {
+					t.Errorf("ParseImageRef() digest = %v, want %v", digest, tt.wantDigest)
+				}
 			}
 		})
 	}
