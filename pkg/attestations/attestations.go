@@ -2,7 +2,6 @@ package attestations
 
 import (
 	"context"
-	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -11,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"crypto/sha256"
 
 	"github.com/google/go-github/v68/github"
 	"github.com/liatrio/autogov-verify/pkg/root"
@@ -293,6 +294,10 @@ func getManifestWithOras(ctx context.Context, org, repository, artifactRef strin
 }
 
 func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPath, trust, cacheDir string, index int, opts Options) (oci.Signature, error) {
+	if att == nil {
+		return nil, fmt.Errorf("attestation is nil")
+	}
+
 	// use GitHub attestation bundle
 	bundleData, err := att.Bundle.MarshalJSON()
 	if err != nil {
@@ -402,11 +407,18 @@ func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPat
 }
 
 func handleBlobVerification(ctx context.Context, artifactRef *Digest, org string, client *github.Client, opts Options, cacheDir string) ([]oci.Signature, error) {
-	if !opts.Quiet {
-		fmt.Println("Verifying blob attestations...")
+	fmt.Println("Verifying blob attestations...")
+
+	// validate inputs
+	if err := validateInputs(client, org, artifactRef); err != nil {
+		return nil, err
 	}
 
-	// read blob content
+	if opts.BlobPath == "" {
+		return nil, fmt.Errorf("blob path is required")
+	}
+
+	// read blob file
 	blobData, err := os.ReadFile(opts.BlobPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read blob: %w", err)
@@ -417,9 +429,7 @@ func handleBlobVerification(ctx context.Context, artifactRef *Digest, org string
 		h := sha256.New()
 		h.Write(blobData)
 		artifactRef, _ = NewDigest(fmt.Sprintf("sha256:%x", h.Sum(nil)))
-		if !opts.Quiet {
-			fmt.Printf("Using calculated blob digest: %s\n", artifactRef)
-		}
+		fmt.Printf("Using calculated blob digest: %s\n", artifactRef)
 	}
 
 	// write trusted root

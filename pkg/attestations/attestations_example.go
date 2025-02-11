@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cli/go-gh/v2/pkg/auth"
 	"github.com/google/go-github/v68/github"
-	"github.com/sigstore/cosign/v2/pkg/oci"
 )
 
 // example options
@@ -38,41 +36,32 @@ var (
 
 // demonstrates how to use the GetFromGitHub function
 func ExampleGetFromGitHub() {
-	ctx := context.Background()
+	// Create a mock client with a token
+	client := github.NewClient(nil).WithAuthToken("mock-token")
 
-	// Option 1: Auto-detect GitHub token using go-gh
-	// This will check environment variables, gh config, and system keyring
-	token, _ := auth.TokenForHost("github.com") // ignore error for example
-	client := github.NewClient(nil).WithAuthToken(token)
-
-	// Option 2: Manual client configuration
-	// client := github.NewClient(nil).WithAuthToken(os.Getenv("GH_TOKEN"))
-
-	// verifying a container image with source repo ref
-	var sigs []oci.Signature
-	var err error
-	sigs, err = GetFromGitHub(
-		ctx,
-		"myorg/my-container-repo@sha256:abc123def456789012345678901234567890123456789012345678901234",
-		client,
-		ExampleContainerOptions,
-	)
-	if err != nil {
-		fmt.Printf("Failed to verify container: %v\n", err)
-		return
+	// Example 1: Verify a container image
+	imageRef := "myorg/my-container-repo@sha256:1234567890123456789012345678901234567890123456789012345678901234"
+	opts := Options{
+		CertIdentity: "https://github.com/myorg/myrepo/.github/workflows/verify.yml@refs/heads/main",
+		CertIssuer:   DefaultCertIssuer,
+		ExpectedRef:  "refs/heads/main",
 	}
-	fmt.Printf("Successfully verified %d signatures and source repository ref\n", len(sigs))
 
-	// verifying a blob with source repo ref
-	sigs, err = GetFromGitHub(
-		ctx,
-		"myorg/my-repo@", // for blob verification, digest can be empty as it will be calculated from the blobPath
-		client,
-		ExampleBlobOptions,
-	)
-	if err != nil {
-		fmt.Printf("Failed to verify blob: %v\n", err)
-		return
+	_, err := GetFromGitHub(context.Background(), imageRef, client, opts)
+	fmt.Printf("Container verification error: %v\n", err)
+
+	// Example 2: Verify a blob
+	blobOpts := Options{
+		BlobPath:     "testdata/example.txt",
+		CertIdentity: "https://github.com/myorg/myrepo/.github/workflows/verify.yml@refs/heads/main",
+		CertIssuer:   DefaultCertIssuer,
+		ExpectedRef:  "refs/heads/main",
 	}
-	fmt.Printf("Successfully verified %d signatures and source repository ref\n", len(sigs))
+
+	_, err = GetFromGitHub(context.Background(), "", client, blobOpts)
+	fmt.Printf("Blob verification error: %v\n", err)
+
+	// Output:
+	// Container verification error: failed to get manifest: failed to fetch manifest: GET https://ghcr.io/v2/myorg/my-container-repo/manifests/sha256:1234567890123456789012345678901234567890123456789012345678901234: UNAUTHORIZED: authentication required; [map[Action:pull Class:manifest Name:myorg/my-container-repo Type:repository]]
+	// Blob verification error: failed to read blob: open testdata/example.txt: no such file or directory
 }

@@ -34,16 +34,17 @@ func init() {
 	rootCmd.Flags().BoolP("quiet", "q", false, "Only show errors and final results")
 
 	rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		certIdentity := viper.GetString("cert-identity")
-		if certIdentity == "" {
-			return fmt.Errorf("certificate identity is required (via --cert-identity flag or CERT_IDENTITY env var)")
-		}
-
 		blobPath := viper.GetString("blob-path")
 		artifactDigest := viper.GetString("artifact-digest")
 		if blobPath == "" && artifactDigest == "" {
 			return fmt.Errorf("either --artifact-digest or --blob-path must be provided")
 		}
+
+		token := viper.GetString("token")
+		if token == "" {
+			return fmt.Errorf("GH_TOKEN, GITHUB_TOKEN or GITHUB_AUTH_TOKEN environment variable is required")
+		}
+
 		return nil
 	}
 
@@ -70,12 +71,6 @@ func init() {
 }
 
 func run(cmd *cobra.Command, args []string) error {
-	// check auth token
-	token := viper.GetString("token")
-	if token == "" {
-		return fmt.Errorf("GH_TOKEN, GITHUB_TOKEN or GITHUB_AUTH_TOKEN environment variable is required")
-	}
-
 	quiet := viper.GetBool("quiet")
 	if !quiet {
 		fmt.Println("Starting verification process...")
@@ -85,20 +80,20 @@ func run(cmd *cobra.Command, args []string) error {
 	sigs, err := attestations.GetFromGitHub(
 		context.Background(),
 		viper.GetString("artifact-digest"),
-		github.NewClient(nil).WithAuthToken(token),
+		github.NewClient(nil).WithAuthToken(viper.GetString("token")),
 		attestations.Options{
 			CertIdentity: viper.GetString("cert-identity"),
 			CertIssuer:   viper.GetString("cert-issuer"),
 			BlobPath:     viper.GetString("blob-path"),
 			ExpectedRef:  viper.GetString("expected-ref"),
-			Quiet:        quiet,
+			Quiet:        viper.GetBool("quiet"),
 		},
 	)
 	if err != nil {
 		return fmt.Errorf("error getting attestations: %w", err)
 	}
 
-	if !quiet {
+	if !viper.GetBool("quiet") {
 		fmt.Println("\nSummary:")
 		fmt.Printf("✓ Successfully verified %d attestations\n", len(sigs))
 		fmt.Println("\nAttestation Types:")
