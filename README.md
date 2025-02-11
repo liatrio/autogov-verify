@@ -73,7 +73,7 @@ The tool supports two methods of GitHub authentication:
      export GITHUB_AUTH_TOKEN=your_token_here
      ```
 
-The token (either a [Classic Personal Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) or a Fine-grained Personal Access Token) needs to have:
+If testing locally, use a PAT (e.g., a [Classic Personal Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)) with the following permissions:
 
 - `read:packages` permission to access GitHub Container Registry (required for container image verification)
 - `repo` permission if verifying private repository artifacts
