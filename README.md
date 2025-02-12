@@ -22,7 +22,7 @@
 
 # GitHub Attestation Verifier
 
-A tool for verifying GitHub Artifact Attestations using cosign.
+A tool for verifying GitHub Artifact Attestations using [cosign](https://docs.sigstore.dev/cosign/overview/).
 
 > **Note**: This tool supports attestations for container images in the GitHub Container Registry (ghcr.io) and blob attestations.
 
@@ -39,17 +39,53 @@ This tool verifies GitHub Artifact Attestations using cosign. It supports the ve
 
 The tool performs several steps for each attestation:
 
-1. Retrieves attestations from GitHub's container registry
-2. Verifies the certificate chain for each attestation
-3. Validates the attestation signature
-4. Checks the certificate identity and issuer
-5. Verifies the attestation payload
+1. Parses the OCI reference to extract organization, repository, and digest
+2. Retrieves attestations from GitHub's container registry
+3. Verifies the certificate chain for each attestation
+4. Validates the attestation signature
+5. Checks the certificate identity and issuer
+6. Verifies the attestation payload
 
 Each attestation is verified against:
 
 - GitHub's trusted root certificates
 - The specified certificate identity (GitHub Actions workflow)
 - The certificate issuer (GitHub Actions OIDC provider)
+
+## Authentication
+
+The tool supports two methods of GitHub authentication:
+
+1. **Auto-detection** (Recommended):
+   - Uses `go-gh` to automatically detect credentials from:
+     - Environment variables (`GH_TOKEN`, `GITHUB_TOKEN`, `GITHUB_AUTH_TOKEN`)
+     - GitHub CLI configuration
+     - System keyring
+
+2. **Manual Configuration**:
+   - Set environment variables directly:
+
+     ```bash
+     export GH_TOKEN=your_token_here
+     # or
+     export GITHUB_TOKEN=your_token_here
+     # or
+     export GITHUB_AUTH_TOKEN=your_token_here
+     ```
+
+If testing locally, use a PAT (e.g., a [Classic Personal Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)) with the following permissions:
+
+- `read:packages` permission to access GitHub Container Registry (required for container image verification)
+- `repo` permission if verifying private repository artifacts
+- Access to the organization/repository you're trying to verify
+
+> **Note**: For container image verification, you must be logged into ghcr.io:
+>
+>```bash
+> echo $GH_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+> ```
+>
+> The same token can be used for both GitHub API access and Docker login.
 
 ## Installation
 
@@ -77,27 +113,31 @@ For development, you'll need:
 - Go 1.21 or higher
 - golangci-lint (for linting)
 - A GitHub Personal Access Token with appropriate organization permissions for testing
+  - Set the token as the `GITHUB_AUTH_TOKEN` environment variable to run tests
 
 ## Usage
 
 ```bash
-autogov-verify -owner <owner> -cert-identity <identity> [options]
+autogov-verify -cert-identity <identity> [options]
 ```
 
 ### Required Flags
 
-- `--owner, -o`: GitHub owner/organization name
-- `--workflow, -w`: Automated Governance Workflow repository to verify against (e.g., OWNER/REPO)
 - `--cert-identity, -i`: Certificate identity to verify against (GitHub Actions workflow URL)
+  - For blob verification, the organization and repository are extracted from this URL
+  - Format: `https://github.com/OWNER/REPO/.github/workflows/...`
 
 And one of the following:
 
-- `--artifact-digest, -d`: Full OCI reference or digest of the artifact to verify
-- `--blob-path`: Path to a blob file to verify attestations against (instead of container manifest)
+- `--artifact-digest, -d`: Full OCI reference for container verification in the format `[registry/]org/repo[:tag]@sha256:hash` (e.g., `ghcr.io/owner/repo@sha256:hash` or `owner/repo@sha256:hash`)
+  - The registry is optional and defaults to ghcr.io
+  - The tag is optional and doesn't affect verification
+- `--blob-path`: Path to a blob file to verify attestations against (e.g., `--blob-path /path/to/file.txt`)
 
 ### Optional Flags
 
-- `--cert-issuer, -s`: Certificate issuer to verify against (default: <https://token.actions.githubusercontent.com>)
+- `--cert-issuer, -s`: Certificate issuer to verify against (default: https://token.actions.githubusercontent.com)
+- `--expected-ref, -r`: Expected repository ref to verify against (e.g., refs/heads/main)
 - `--quiet, -q`: Only show errors and final results
 
 ### Environment Variables
@@ -106,30 +146,42 @@ The following environment variables can be used for authentication:
 
 - `GH_TOKEN`, `GITHUB_TOKEN`, or `GITHUB_AUTH_TOKEN`: GitHub personal access token with read access to packages
 
-All command line flags can be set via environment variables with the `GITHUB_` prefix:
+All command line flags can be set via environment variables:
 
-- `GITHUB_OWNER`: Alternative to --owner flag
-- `GITHUB_CERT_IDENTITY`: Alternative to --cert-identity flag
-- `GITHUB_CERT_ISSUER`: Alternative to --cert-issuer flag
-- `GITHUB_QUIET`: Alternative to --quiet flag
+- `CERT_IDENTITY`: Alternative to --cert-identity flag
+- `CERT_ISSUER`: Alternative to --cert-issuer flag
+- `EXPECTED_REF`: Alternative to --expected-ref flag
+- `QUIET`: Alternative to --quiet flag
 
 ## Examples
 
-Verify an image using its digest:
+Verify a container image:
 
 ```bash
 export GITHUB_AUTH_TOKEN=your_token
-./autogov-verify --wf-repo demo-gh-autogov-workflows --owner liatrio --artifact-digest sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682 --cert-identity "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/feat/add-dependency-scan" --expected-ref refs/heads/feat/add-dependency-scan
+autogov-verify \
+  --cert-identity "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/feat/add-dependency-scan" \
+  --artifact-digest "ghcr.io/liatrio/demo-gh-autogov-workflows@sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682" \
+  --expected-ref refs/heads/feat/add-dependency-scan
+```
+
+Verify a blob file:
+
+```bash
+export GITHUB_AUTH_TOKEN=your_token
+autogov-verify \
+  --cert-identity "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-blob.yaml@refs/heads/main" \
+  --blob-path path/to/your/file \
+  --expected-ref refs/heads/main
 ```
 
 Using environment variables:
 
 ```bash
 export GITHUB_AUTH_TOKEN=your_token
-export GITHUB_OWNER=liatrio
-export GITHUB_CERT_IDENTITY="https://github.com/owner/repo/.github/workflows/workflow.yaml@refs/heads/main"
-export GITHUB_CERT_ISSUER=https://token.actions.githubusercontent.com
-autogov-verify -d sha256:702bea33d240c2f0a1d87fe649a49b52f533bde2005b3c1bc0be7859dd5e4226
+export CERT_IDENTITY="https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main"
+export CERT_ISSUER=https://token.actions.githubusercontent.com
+autogov-verify -d "ghcr.io/liatrio/demo-gh-autogov-workflows@sha256:702bea33d240c2f0a1d87fe649a49b52f533bde2005b3c1bc0be7859dd5e4226"
 ```
 
 ## Output
@@ -159,10 +211,10 @@ Attestation Types:
 Common issues and solutions:
 
 1. **Authentication Errors**
-   - Ensure your GitHub token has the necessary permissions (packages:read)
+   - Ensure your GitHub token has the necessary permissions (see Authentication section above)
    - Check that the token is properly set in environment variables
    - Verify you have access to the GitHub organization
-   - For container image verification, ensure you're logged into ghcr.io with `docker login ghcr.io` (e.g., [Classic Personal Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) with `read:packages` / `repo` permissions)
+   - For container image verification, ensure you're logged into ghcr.io
 
 2. **Certificate Verification Failures**
    - Verify the certificate identity matches your GitHub Actions workflow
@@ -178,6 +230,8 @@ Common issues and solutions:
 4. **Invalid Digest Format**
    - Ensure the digest follows the format: `sha256:hash`
    - When using full OCI references, include the registry: `ghcr.io/owner/repo@sha256:hash`
+
+If you encounter any other issues, please [open an issue](https://github.com/liatrio/autogov-verify/issues/new) and include as much detail as possible.
 
 ## License
 

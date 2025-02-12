@@ -2,7 +2,6 @@ package attestations
 
 import (
 	"context"
-	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -12,8 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"crypto/sha256"
+
 	"github.com/google/go-github/v68/github"
 	"github.com/liatrio/autogov-verify/pkg/root"
+	"github.com/liatrio/autogov-verify/pkg/storage"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
 	"github.com/sigstore/cosign/v2/pkg/oci"
@@ -24,41 +26,37 @@ import (
 	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
-// example options
-const (
-	// default gha oidc token issuer
-	DefaultCertIssuer = "https://token.actions.githubusercontent.com"
+// default gha oidc token issuer
+const DefaultCertIssuer = "https://token.actions.githubusercontent.com"
 
-	// cert identity patterns
-	ExampleWorkflowMainRef   = "https://github.com/OWNER/REPO/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main"
-	ExampleWorkflowTagRef    = "https://github.com/OWNER/REPO/.github/workflows/rw-hp-attest-image.yaml@refs/tags/v1.0.0"
-	ExampleWorkflowCommitRef = "https://github.com/OWNER/REPO/.github/workflows/rw-hp-attest-image.yaml@refs/pull/123/merge"
-	ExampleWorkflowSHARef    = "https://github.com/OWNER/REPO/.github/workflows/rw-hp-attest-image.yaml@f1a9b0be784bc27ba9076d76b75025d77ba18919"
-)
+// represents a SHA-256 digest of an artifact
+type Digest struct {
+	value string
+}
 
-// example container/blob options
-var (
-	ExampleContainerOptions = Options{
-		Repository:   "my-container-repo",
-		ExpectedRef:  "refs/heads/main",
-		CertIdentity: "https://github.com/myorg/myrepo/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main",
-		CertIssuer:   DefaultCertIssuer,
-		Quiet:        false,
+// creates a new Digest from a string and returns an error if the digest format is invalid
+func NewDigest(value string) (*Digest, error) {
+	// Allow empty digest for blob verification (will be calculated later)
+	if value == "" {
+		return &Digest{value: ""}, nil
 	}
 
-	ExampleBlobOptions = Options{
-		BlobPath:     "/path/to/my/file.txt",
-		ExpectedRef:  "refs/heads/main",
-		CertIdentity: "https://github.com/myorg/myrepo/.github/workflows/rw-hp-attest-blob.yaml@refs/heads/main",
-		CertIssuer:   DefaultCertIssuer,
-		Quiet:        false,
+	// Validate digest format (sha256:hash)
+	parts := strings.Split(value, ":")
+	if len(parts) != 2 || parts[0] != "sha256" || len(parts[1]) != 64 {
+		return nil, fmt.Errorf("invalid digest format, expected 'sha256:<64-char-hex>', got %s", value)
 	}
-)
+
+	return &Digest{value: value}, nil
+}
+
+// returns the string representation of the digest
+func (d *Digest) String() string {
+	return d.value
+}
 
 // config for verify
 type Options struct {
-	// expected wf repository name
-	Repository string
 	// path to blob file to verify against
 	// if given, verification performed against blob instead of image
 	// example: "/path/to/my/file.txt"
@@ -77,35 +75,110 @@ type Options struct {
 	Quiet bool
 }
 
+// parses a full OCI ref into components
+// format: [registry/]org/repo[:tag]@digest
+func ParseImageRef(ref string) (org, repo, digest string, err error) {
+	parts := strings.Split(ref, "@")
+	if len(parts) != 2 {
+		return "", "", "", fmt.Errorf("invalid reference format, expected [registry/]org/repo[:tag]@digest")
+	}
+
+	// get digest
+	digest = parts[1]
+
+	// get repo
+	repoPath := parts[0]
+	// remove registry if present
+	if strings.Contains(repoPath, "/") {
+		repoParts := strings.Split(repoPath, "/")
+		if strings.Contains(repoParts[0], ".") { // likely a registry
+			repoPath = strings.Join(repoParts[1:], "/")
+		}
+	}
+
+	// remove tag if present
+	if strings.Contains(repoPath, ":") {
+		repoPath = strings.Split(repoPath, ":")[0]
+	}
+
+	// get org and repo
+	repoParts := strings.Split(repoPath, "/")
+	if len(repoParts) != 2 {
+		return "", "", "", fmt.Errorf("invalid repository format, expected org/repo")
+	}
+
+	return repoParts[0], repoParts[1], digest, nil
+}
+
+// parseorg and repo from a GitHub Actions workflow URL
+// format: https://github.com/OWNER/REPO/.github/workflows/...
+func parseOrgRepoFromWorkflowURL(certIdentity string) (string, string, error) {
+	// removes https://github.com/ prefix
+	parts := strings.Split(certIdentity, "github.com/")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid certificate identity format, expected GitHub Actions workflow URL")
+	}
+
+	// split path components
+	pathParts := strings.Split(parts[1], "/")
+	if len(pathParts) < 2 {
+		return "", "", fmt.Errorf("invalid certificate identity format, could not extract org/repo")
+	}
+
+	return pathParts[0], pathParts[1], nil
+}
+
 // retrieves and verifies attestations for a gh container image or blob
-func GetFromGitHub(ctx context.Context, artifactRef string, org string, token string, opts Options) ([]oci.Signature, error) {
+func GetFromGitHub(ctx context.Context, imageRef string, client *github.Client, opts Options) ([]oci.Signature, error) {
+	var org, repo string
+	var artifactRef *Digest
+	var err error
+
+	if opts.BlobPath != "" {
+		org, repo, err = parseOrgRepoFromWorkflowURL(opts.CertIdentity)
+		// if blob, extract org/repo from cert-identity
+		if err != nil {
+			return nil, fmt.Errorf("failed to extract org/repo from certificate identity: %w", err)
+		}
+		// if empty digest for blob, calculated later
+		artifactRef, _ = NewDigest("")
+	} else {
+		// container verification parses from image/oci ref
+		if imageRef == "" {
+			return nil, fmt.Errorf("artifact digest is required for container verification")
+		}
+		var digest string
+		org, repo, digest, err = ParseImageRef(imageRef)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse image reference: %w", err)
+		}
+		artifactRef, err = NewDigest(digest)
+		if err != nil {
+			return nil, fmt.Errorf("invalid digest format: %w", err)
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
 	// validate inputs first
-	if err := validateInputs(token, org, artifactRef); err != nil {
+	if err := validateInputs(client, org, artifactRef); err != nil {
 		return nil, err
 	}
 
 	// set default options
 	opts = setDefaultOptions(opts)
 
-	// if blob path is set, handle blob verification
-	if opts.BlobPath != "" {
-		return handleBlobVerification(ctx, artifactRef, org, token, opts)
-	}
-
-	// validate repository is set for container verification
-	if opts.Repository == "" {
-		return nil, fmt.Errorf("repository is required for container verification")
-	}
-
-	// create verify dir
-	cacheDir, err := os.MkdirTemp(os.TempDir(), "attestations-*")
+	// create temp directory with cleanup function
+	cacheDir, cleanup, err := storage.CreateTempDir("attestations-")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cache directory: %w", err)
+		return nil, err
 	}
-	defer os.RemoveAll(cacheDir)
+	defer cleanup()
+
+	if opts.BlobPath != "" {
+		return handleBlobVerification(ctx, artifactRef, org, client, opts, cacheDir)
+	}
 
 	// write trusted root
 	trust := filepath.Join(cacheDir, "github-trusted-root.json")
@@ -114,7 +187,7 @@ func GetFromGitHub(ctx context.Context, artifactRef string, org string, token st
 	}
 
 	// fetch manifest
-	manifest, err := getManifestWithOras(ctx, org, opts.Repository, artifactRef, token)
+	manifest, err := getManifestWithOras(ctx, org, repo, artifactRef.String(), client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get manifest: %w", err)
 	}
@@ -125,8 +198,7 @@ func GetFromGitHub(ctx context.Context, artifactRef string, org string, token st
 	}
 
 	// get gh attestations
-	client := github.NewClient(nil).WithAuthToken(token)
-	atts, _, err := client.Organizations.ListAttestations(ctx, org, artifactRef, &github.ListOptions{})
+	atts, _, err := client.Organizations.ListAttestations(ctx, org, artifactRef.String(), &github.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list attestations: %w", err)
 	}
@@ -152,13 +224,13 @@ func GetFromGitHub(ctx context.Context, artifactRef string, org string, token st
 	return sigs, nil
 }
 
-func validateInputs(token, org, artifactRef string) error {
+func validateInputs(client *github.Client, org string, artifactRef *Digest) error {
 	switch {
-	case token == "":
-		return fmt.Errorf("github authentication token is required")
+	case client == nil:
+		return fmt.Errorf("github client is required")
 	case org == "":
 		return fmt.Errorf("github organization name is required")
-	case artifactRef == "":
+	case artifactRef == nil:
 		return fmt.Errorf("artifact reference is required")
 	default:
 		return nil
@@ -173,12 +245,32 @@ func setDefaultOptions(opts Options) Options {
 }
 
 // fetch manifest using oras
-func getManifestWithOras(ctx context.Context, org, repository, artifactRef string, token string) ([]byte, error) {
+func getManifestWithOras(ctx context.Context, org, repository, artifactRef string, client *github.Client) ([]byte, error) {
 	// create repo ref
 	repoRef := fmt.Sprintf("ghcr.io/%s/%s", org, repository)
 	repo, err := remote.NewRepository(repoRef)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository: %w", err)
+	}
+
+	// get token from client's transport/env
+	var token string
+	if t, ok := client.Client().Transport.(*github.BasicAuthTransport); ok {
+		token = t.Password
+	}
+
+	// if no token from transport/env, try env vars
+	if token == "" {
+		token = os.Getenv("GH_TOKEN")
+		if token == "" {
+			token = os.Getenv("GITHUB_TOKEN")
+		}
+		if token == "" {
+			token = os.Getenv("GITHUB_AUTH_TOKEN")
+		}
+		if token == "" {
+			return nil, fmt.Errorf("no token found in github client transport or environment")
+		}
 	}
 
 	// auth config
@@ -202,6 +294,10 @@ func getManifestWithOras(ctx context.Context, org, repository, artifactRef strin
 }
 
 func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPath, trust, cacheDir string, index int, opts Options) (oci.Signature, error) {
+	if att == nil {
+		return nil, fmt.Errorf("attestation is nil")
+	}
+
 	// use GitHub attestation bundle
 	bundleData, err := att.Bundle.MarshalJSON()
 	if err != nil {
@@ -310,148 +406,31 @@ func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPat
 	return sig, nil
 }
 
-func ReadFromDir(ctx context.Context, dirPath string, digest string) ([]oci.Signature, error) {
-	if digest == "" {
-		return nil, fmt.Errorf("digest is required")
-	}
+func handleBlobVerification(ctx context.Context, artifactRef *Digest, org string, client *github.Client, opts Options, cacheDir string) ([]oci.Signature, error) {
+	fmt.Println("Verifying blob attestations...")
 
-	if dirPath == "" {
-		dirPath = "."
-	}
-
-	filename := digestToFileName(digest)
-	content, err := os.ReadFile(filepath.Join(dirPath, filename))
-	if err != nil {
+	// validate inputs
+	if err := validateInputs(client, org, artifactRef); err != nil {
 		return nil, err
 	}
 
-	// split and parse json
-	lines := strings.Split(string(content), "\n")
-	sigs := make([]oci.Signature, 0, len(lines))
-
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-
-		var bundle struct {
-			PayloadType string `json:"payloadType"`
-			Payload     string `json:"payload"`
-			Signatures  []struct {
-				Sig string `json:"sig"`
-			} `json:"signatures"`
-		}
-		if err := json.Unmarshal([]byte(line), &bundle); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal bundle: %w", err)
-		}
-
-		// create signature
-		sig, err := static.NewSignature(
-			[]byte(bundle.Payload),
-			bundle.Signatures[0].Sig,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create signature: %w", err)
-		}
-
-		sigs = append(sigs, sig)
+	if opts.BlobPath == "" {
+		return nil, fmt.Errorf("blob path is required")
 	}
 
-	return sigs, nil
-}
-
-func WriteToDir(ctx context.Context, dirPath string, digest string, sigs []oci.Signature) error {
-	if digest == "" {
-		return fmt.Errorf("digest is required")
-	}
-
-	if sigs == nil {
-		return fmt.Errorf("signatures are required")
-	}
-
-	if dirPath == "" {
-		dirPath = "."
-	} else {
-		err := os.MkdirAll(dirPath, 0755)
-		if err != nil {
-			return err
-		}
-	}
-
-	filename := digestToFileName(digest)
-	filepath := filepath.Join(dirPath, filename)
-
-	// write signature as separate json line
-	var lines []string
-	for _, sig := range sigs {
-		payload, err := sig.Payload()
-		if err != nil {
-			return fmt.Errorf("failed to get payload: %w", err)
-		}
-
-		signature, err := sig.Signature()
-		if err != nil {
-			return fmt.Errorf("failed to get signature: %w", err)
-		}
-
-		b := struct {
-			PayloadType string `json:"payloadType"`
-			Payload     string `json:"payload"`
-			Signatures  []struct {
-				Sig string `json:"sig"`
-			} `json:"signatures"`
-		}{
-			PayloadType: "application/vnd.in-toto+json",
-			Payload:     string(payload),
-			Signatures: []struct {
-				Sig string `json:"sig"`
-			}{
-				{Sig: string(signature)},
-			},
-		}
-
-		line, err := json.Marshal(b)
-		if err != nil {
-			return fmt.Errorf("failed to marshal bundle: %w", err)
-		}
-		lines = append(lines, string(line))
-	}
-
-	return os.WriteFile(filepath, []byte(strings.Join(lines, "\n")), 0644)
-}
-
-// transform digest to file
-func digestToFileName(digest string) string {
-	return fmt.Sprintf("testdata/%s.json", strings.Replace(digest, ":", "-", 1))
-}
-
-func handleBlobVerification(ctx context.Context, artifactRef string, org string, token string, opts Options) ([]oci.Signature, error) {
-	if !opts.Quiet {
-		fmt.Println("Verifying blob attestations...")
-	}
-
-	// read blob content
+	// read blob file
 	blobData, err := os.ReadFile(opts.BlobPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read blob: %w", err)
 	}
 
 	// if no blob digest, calculate from blobpath
-	if artifactRef == "" {
+	if artifactRef.String() == "" {
 		h := sha256.New()
 		h.Write(blobData)
-		artifactRef = fmt.Sprintf("sha256:%x", h.Sum(nil))
-		if !opts.Quiet {
-			fmt.Printf("Using calculated blob digest: %s\n", artifactRef)
-		}
+		artifactRef, _ = NewDigest(fmt.Sprintf("sha256:%x", h.Sum(nil)))
+		fmt.Printf("Using calculated blob digest: %s\n", artifactRef)
 	}
-
-	// create verify dir
-	cacheDir, err := os.MkdirTemp(os.TempDir(), "attestations-*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create cache directory: %w", err)
-	}
-	defer os.RemoveAll(cacheDir)
 
 	// write trusted root
 	trust := filepath.Join(cacheDir, "github-trusted-root.json")
@@ -460,8 +439,7 @@ func handleBlobVerification(ctx context.Context, artifactRef string, org string,
 	}
 
 	// get gh attestations
-	client := github.NewClient(nil).WithAuthToken(token)
-	atts, _, err := client.Organizations.ListAttestations(ctx, org, artifactRef, &github.ListOptions{})
+	atts, _, err := client.Organizations.ListAttestations(ctx, org, artifactRef.String(), &github.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list attestations: %w", err)
 	}
@@ -485,37 +463,4 @@ func handleBlobVerification(ctx context.Context, artifactRef string, org string,
 	}
 
 	return sigs, nil
-}
-
-// demonstrates how to use the GetFromGitHub function
-func ExampleGetFromGitHub() {
-	ctx := context.Background()
-
-	// verifying a container image with source repo ref
-	sigs, err := GetFromGitHub(
-		ctx,
-		"sha256:abc123def456",
-		"myorg",
-		"ghp_123456789",
-		ExampleContainerOptions,
-	)
-	if err != nil {
-		fmt.Printf("Failed to verify container: %v\n", err)
-		return
-	}
-	fmt.Printf("Successfully verified %d signatures and source repository ref\n", len(sigs))
-
-	// verifying a blob with source repo ref
-	sigs, err = GetFromGitHub(
-		ctx,
-		"", // digest will be calculated from blob
-		"myorg",
-		"ghp_123456789",
-		ExampleBlobOptions,
-	)
-	if err != nil {
-		fmt.Printf("Failed to verify blob: %v\n", err)
-		return
-	}
-	fmt.Printf("Successfully verified %d signatures and source repository ref\n", len(sigs))
 }

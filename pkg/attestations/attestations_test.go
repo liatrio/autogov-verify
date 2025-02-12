@@ -3,12 +3,15 @@ package attestations
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-github/v68/github"
 	"github.com/liatrio/autogov-verify/pkg/root"
+	"github.com/liatrio/autogov-verify/pkg/storage"
 	"github.com/sigstore/cosign/v2/pkg/oci"
 	"github.com/sigstore/cosign/v2/pkg/oci/static"
 )
@@ -28,17 +31,24 @@ func TestGetFromGitHub(t *testing.T) {
 	// skip if no GitHub token available
 	token := getGitHubToken(t)
 
+	// create temp test file
+	tmpDir := t.TempDir()
+	blobPath := filepath.Join(tmpDir, "test.txt")
+	if err := os.WriteFile(blobPath, []byte("test data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
 	tests := []struct {
-		name        string
-		artifactRef string
-		org         string
-		opts        Options
-		wantErr     bool
+		name     string
+		imageRef string
+		opts     Options
+		client   *github.Client
+		wantErr  bool
+		errMsg   string
 	}{
 		{
-			name:        "invalid org",
-			artifactRef: "sha256:abc123",
-			org:         "invalid-org-that-does-not-exist",
+			name:     "invalid org",
+			imageRef: "invalid-org/repo@sha256:abc123def456789012345678901234567890123456789012345678901234",
 			opts: Options{
 				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
 				CertIssuer:   "https://token.actions.githubusercontent.com",
@@ -46,22 +56,104 @@ func TestGetFromGitHub(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:        "invalid digest",
-			artifactRef: "invalid-digest",
-			org:         "liatrio",
+			name:     "invalid digest",
+			imageRef: "liatrio/repo@invalid-digest",
 			opts: Options{
 				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
 				CertIssuer:   "https://token.actions.githubusercontent.com",
 			},
 			wantErr: true,
+		},
+		{
+			name:     "with registry",
+			imageRef: "ghcr.io/liatrio/repo@sha256:abc123def456789012345678901234567890123456789012345678901234",
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
+				CertIssuer:   "https://token.actions.githubusercontent.com",
+			},
+			wantErr: true,
+		},
+		{
+			name:     "with tag",
+			imageRef: "liatrio/repo:latest@sha256:abc123def456789012345678901234567890123456789012345678901234",
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
+				CertIssuer:   "https://token.actions.githubusercontent.com",
+			},
+			wantErr: true,
+		},
+		{
+			name:     "nil client",
+			imageRef: "liatrio/repo@sha256:1234567890123456789012345678901234567890123456789012345678901234",
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
+			},
+			client:  nil,
+			wantErr: true,
+			errMsg:  "github client is required",
+		},
+		{
+			name:     "empty cert identity with blob",
+			imageRef: "",
+			opts: Options{
+				BlobPath: blobPath,
+			},
+			wantErr: true,
+			errMsg:  "failed to extract org/repo from certificate identity",
+		},
+		{
+			name:     "invalid cert identity format with blob",
+			imageRef: "",
+			opts: Options{
+				BlobPath:     blobPath,
+				CertIdentity: "invalid-url",
+			},
+			wantErr: true,
+			errMsg:  "invalid certificate identity format",
+		},
+		{
+			name:     "missing_both_artifact_digest_and_blob_path",
+			imageRef: "",
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
+			},
+			wantErr: true,
+			errMsg:  "artifact digest is required for container verification",
+		},
+		{
+			name:     "empty artifact digest for container verification",
+			imageRef: "",
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
+				BlobPath:     "",
+			},
+			wantErr: true,
+			errMsg:  "artifact digest is required for container verification",
+		},
+		{
+			name:     "invalid blob path",
+			imageRef: "",
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
+				BlobPath:     "/nonexistent/path",
+			},
+			wantErr: true,
+			errMsg:  "failed to read blob",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := GetFromGitHub(context.Background(), tt.artifactRef, tt.org, token, tt.opts)
+			client := tt.client
+			if client == nil && tt.name != "nil client" {
+				client = github.NewClient(nil).WithAuthToken(token)
+			}
+			_, err := GetFromGitHub(context.Background(), tt.imageRef, client, tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetFromGitHub() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.errMsg != "" && err != nil && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("GetFromGitHub() error = %v, want error containing %v", err, tt.errMsg)
 			}
 		})
 	}
@@ -79,16 +171,14 @@ func TestGetFromGitHubWithBlob(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		artifactRef string
-		org         string
-		opts        Options
-		wantErr     bool
+		name     string
+		imageRef string
+		opts     Options
+		wantErr  bool
 	}{
 		{
-			name:        "blob with no attestations",
-			artifactRef: "",
-			org:         "liatrio",
+			name:     "blob with no attestations",
+			imageRef: "liatrio/repo@sha256:abc123def456789012345678901234567890123456789012345678901234",
 			opts: Options{
 				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
 				CertIssuer:   "https://token.actions.githubusercontent.com",
@@ -100,7 +190,8 @@ func TestGetFromGitHubWithBlob(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := GetFromGitHub(context.Background(), tt.artifactRef, tt.org, token, tt.opts)
+			client := github.NewClient(nil).WithAuthToken(token)
+			_, err := GetFromGitHub(context.Background(), tt.imageRef, client, tt.opts)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetFromGitHub() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -109,57 +200,56 @@ func TestGetFromGitHubWithBlob(t *testing.T) {
 }
 
 func TestValidateInputs(t *testing.T) {
+	validDigest := &Digest{value: "sha256:abc123def456789012345678901234567890123456789012345678901234"}
 	tests := []struct {
 		name        string
-		artifactRef string
+		client      *github.Client
 		org         string
-		token       string
-		opts        Options
+		artifactRef *Digest
 		wantErr     bool
+		errMsg      string
 	}{
 		{
 			name:        "valid inputs",
-			artifactRef: "sha256:abc123def456789012345678901234567890123456789012345678901234",
+			client:      github.NewClient(nil),
 			org:         "liatrio",
-			token:       "test-token",
-			opts: Options{
-				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
-				CertIssuer:   "https://token.actions.githubusercontent.com",
-				Repository:   "autogov-verify",
-			},
-			wantErr: true,
+			artifactRef: validDigest,
+			wantErr:     false,
 		},
 		{
-			name:        "empty artifact ref",
-			artifactRef: "",
+			name:        "nil client",
+			client:      nil,
 			org:         "liatrio",
-			token:       "test-token",
-			opts: Options{
-				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
-				CertIssuer:   "https://token.actions.githubusercontent.com",
-				Repository:   "autogov-verify",
-			},
-			wantErr: true,
+			artifactRef: validDigest,
+			wantErr:     true,
+			errMsg:      "github client is required",
 		},
 		{
 			name:        "empty org",
-			artifactRef: "sha256:abc123def456789012345678901234567890123456789012345678901234",
+			client:      github.NewClient(nil),
 			org:         "",
-			token:       "test-token",
-			opts: Options{
-				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
-				CertIssuer:   "https://token.actions.githubusercontent.com",
-				Repository:   "autogov-verify",
-			},
-			wantErr: true,
+			artifactRef: validDigest,
+			wantErr:     true,
+			errMsg:      "github organization name is required",
+		},
+		{
+			name:        "nil artifact ref",
+			client:      github.NewClient(nil),
+			org:         "liatrio",
+			artifactRef: nil,
+			wantErr:     true,
+			errMsg:      "artifact reference is required",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := GetFromGitHub(context.Background(), tt.artifactRef, tt.org, tt.token, tt.opts)
+			err := validateInputs(tt.client, tt.org, tt.artifactRef)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("GetFromGitHub() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("validateInputs() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.errMsg != "" && err != nil && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("validateInputs() error = %v, want error containing %v", err, tt.errMsg)
 			}
 		})
 	}
@@ -190,20 +280,20 @@ func TestReadWriteDir(t *testing.T) {
 	}
 
 	// test WriteToDir
-	err := WriteToDir(context.Background(), tmpDir, testDigest, testSigs)
+	err := storage.WriteAttestationsToDir(context.Background(), tmpDir, testDigest, testSigs)
 	if err != nil {
 		t.Fatalf("WriteToDir() error = %v", err)
 	}
 
 	// verify file exists
-	filename := digestToFileName(testDigest)
+	filename := fmt.Sprintf("%s.json", strings.Replace(testDigest, ":", "-", 1))
 	filePath := filepath.Join(tmpDir, filename)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		t.Errorf("WriteToDir() did not create file at %s", filePath)
 	}
 
 	// test ReadFromDir
-	sigs, err := ReadFromDir(context.Background(), tmpDir, testDigest)
+	sigs, err := storage.ReadAttestationsFromDir(context.Background(), tmpDir, testDigest)
 	if err != nil {
 		t.Fatalf("ReadFromDir() error = %v", err)
 	}
@@ -229,25 +319,44 @@ func TestReadWriteDir(t *testing.T) {
 	}
 
 	// error cases
-	_, err = ReadFromDir(context.Background(), tmpDir, "invalid-digest")
+	_, err = storage.ReadAttestationsFromDir(context.Background(), tmpDir, "invalid-digest")
 	if err == nil {
 		t.Error("ReadFromDir() with invalid digest should return error")
 	}
 
-	err = WriteToDir(context.Background(), "/nonexistent/dir", testDigest, testSigs)
+	err = storage.WriteAttestationsToDir(context.Background(), "/nonexistent/dir", testDigest, testSigs)
 	if err == nil {
 		t.Error("WriteToDir() with invalid directory should return error")
 	}
 }
 
-func TestSetDefaultOptions(t *testing.T) {
-	opts := Options{
-		Repository: "autogov-verify",
+func TestSetDefaultOptionsExtended(t *testing.T) {
+	tests := []struct {
+		name string
+		opts Options
+		want string
+	}{
+		{
+			name: "empty issuer",
+			opts: Options{},
+			want: DefaultCertIssuer,
+		},
+		{
+			name: "custom issuer",
+			opts: Options{
+				CertIssuer: "custom-issuer",
+			},
+			want: "custom-issuer",
+		},
 	}
-	opts = setDefaultOptions(opts)
 
-	if opts.CertIssuer != DefaultCertIssuer {
-		t.Errorf("setDefaultOptions() CertIssuer = %v, want %v", opts.CertIssuer, DefaultCertIssuer)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := setDefaultOptions(tt.opts)
+			if got.CertIssuer != tt.want {
+				t.Errorf("setDefaultOptions() CertIssuer = %v, want %v", got.CertIssuer, tt.want)
+			}
+		})
 	}
 }
 
@@ -271,19 +380,96 @@ func TestVerifyAttestation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// create mock attestation with invalid bundle
-	att := &github.Attestation{
-		Bundle: json.RawMessage(`{"payloadType":"application/vnd.in-toto+json","payload":"eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjAuMSIsInByZWRpY2F0ZVR5cGUiOiJodHRwczovL3NsLmRldi9hdHRlc3RhdGlvbi92MC4xIiwic3ViamVjdCI6W3sibmFtZSI6InNoYTI1NjphYmMxMjMiLCJkaWdlc3QiOnsic2hhMjU2IjoiYWJjMTIzIn19XSwicHJlZGljYXRlIjp7fX0=","signatures":[{"sig":"MEUCIQD/GAXOMtmvjC3/JzJJRZWJ0B8DM7WGf5GbCt5PvcF5RQIgYBwL/lR8YGYhUQWZWYDJ2UJKZyK4QxgWbcIj+KVxCkE="}]}`),
+	tests := []struct {
+		name    string
+		att     *github.Attestation
+		opts    Options
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "invalid bundle",
+			att: &github.Attestation{
+				Bundle: json.RawMessage(`{"payloadType":"application/vnd.in-toto+json","payload":"eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjAuMSIsInByZWRpY2F0ZVR5cGUiOiJodHRwczovL3NsLmRldi9hdHRlc3RhdGlvbi92MC4xIiwic3ViamVjdCI6W3sibmFtZSI6InNoYTI1NjphYmMxMjMiLCJkaWdlc3QiOnsic2hhMjU2IjoiYWJjMTIzIn19XSwicHJlZGljYXRlIjp7fX0=","signatures":[{"sig":"MEUCIQD/GAXOMtmvjC3/JzJJRZWJ0B8DM7WGf5GbCt5PvcF5RQIgYBwL/lR8YGYhUQWZWYDJ2UJKZyK4QxgWbcIj+KVxCkE="}]}`),
+			},
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
+				CertIssuer:   DefaultCertIssuer,
+			},
+			wantErr: true,
+			errMsg:  "failed to unmarshal bundle",
+		},
+		{
+			name: "nil attestation",
+			att:  nil,
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
+				CertIssuer:   DefaultCertIssuer,
+			},
+			wantErr: true,
+			errMsg:  "attestation is nil",
+		},
+		{
+			name: "invalid bundle json",
+			att: &github.Attestation{
+				Bundle: json.RawMessage(`invalid json`),
+			},
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
+				CertIssuer:   DefaultCertIssuer,
+			},
+			wantErr: true,
+			errMsg:  "failed to unmarshal bundle",
+		},
+		{
+			name: "provenance with expected ref mismatch",
+			att: &github.Attestation{
+				Bundle: json.RawMessage(`{
+					"mediaType": "application/vnd.dev.sigstore.bundle+json;version=0.1",
+					"dsseEnvelope": {
+						"payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjAuMSIsInByZWRpY2F0ZVR5cGUiOiJodHRwczovL3NsLmRldi9wcm92ZW5hbmNlL3YxIiwic3ViamVjdCI6W3sibmFtZSI6InNoYTI1NjphYmMxMjMiLCJkaWdlc3QiOnsic2hhMjU2IjoiYWJjMTIzIn19XSwicHJlZGljYXRlIjp7ImJ1aWxkRGVmaW5pdGlvbiI6eyJleHRlcm5hbFBhcmFtZXRlcnMiOnsid29ya2Zsb3ciOnsicmVmIjoicmVmcy9oZWFkcy9tYWluIn19fX19",
+						"signatures": [{"sig": "MEUCIQD/GAXOMtmvjC3/JzJJRZWJ0B8DM7WGf5GbCt5PvcF5RQIgYBwL/lR8YGYhUQWZWYDJ2UJKZyK4QxgWbcIj+KVxCkE="}]
+					}
+				}`),
+			},
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
+				CertIssuer:   DefaultCertIssuer,
+				ExpectedRef:  "refs/heads/other",
+			},
+			wantErr: true,
+			errMsg:  "failed to unmarshal bundle: invalid bundle: validation error: missing verification material",
+		},
+		{
+			name: "invalid signature",
+			att: &github.Attestation{
+				Bundle: json.RawMessage(`{
+					"mediaType": "application/vnd.dev.sigstore.bundle+json;version=0.1",
+					"dsseEnvelope": {
+						"payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjAuMSIsInByZWRpY2F0ZVR5cGUiOiJodHRwczovL3NsLmRldi9hdHRlc3RhdGlvbi92MC4xIiwic3ViamVjdCI6W3sibmFtZSI6InNoYTI1NjphYmMxMjMiLCJkaWdlc3QiOnsic2hhMjU2IjoiYWJjMTIzIn19XSwicHJlZGljYXRlIjp7fX0=",
+						"signatures": [{"sig": "invalid"}]
+					}
+				}`),
+			},
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
+				CertIssuer:   DefaultCertIssuer,
+			},
+			wantErr: true,
+			errMsg:  "failed to unmarshal bundle: invalid bundle: validation error: missing verification material",
+		},
 	}
 
-	opts := Options{
-		CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
-		CertIssuer:   DefaultCertIssuer,
-	}
-
-	_, err := verifyAttestation(context.Background(), att, blobPath, trust, cacheDir, 0, opts)
-	if err == nil {
-		t.Error("verifyAttestation() expected error with invalid bundle")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := verifyAttestation(context.Background(), tt.att, blobPath, trust, cacheDir, 0, tt.opts)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("verifyAttestation() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.errMsg != "" && err != nil && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("verifyAttestation() error = %v, want error containing %v", err, tt.errMsg)
+			}
+		})
 	}
 }
 
@@ -291,34 +477,39 @@ func TestHandleBlobVerification(t *testing.T) {
 	// skip if no GitHub token available
 	token := getGitHubToken(t)
 
-	// create temp test file
+	// create test files and directories
 	tmpDir := t.TempDir()
-	blobPath := filepath.Join(tmpDir, "test.txt")
-	if err := os.WriteFile(blobPath, []byte("test data"), 0644); err != nil {
+	validBlobPath := filepath.Join(tmpDir, "valid.txt")
+	if err := os.WriteFile(validBlobPath, []byte("test data"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
+	// create test digest with non-nil value
+	validDigest := &Digest{value: "sha256:abc123def456789012345678901234567890123456789012345678901234"}
+
 	tests := []struct {
 		name        string
-		artifactRef string
+		artifactRef *Digest
 		org         string
+		client      *github.Client
 		opts        Options
 		wantErr     bool
+		errMsg      string
 	}{
 		{
 			name:        "valid blob",
-			artifactRef: "",
+			artifactRef: validDigest,
 			org:         "liatrio",
 			opts: Options{
 				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
 				CertIssuer:   DefaultCertIssuer,
-				BlobPath:     blobPath,
+				BlobPath:     validBlobPath,
 			},
 			wantErr: true, // expect error since we don't have real attestations
 		},
 		{
 			name:        "invalid blob path",
-			artifactRef: "sha256:abc123",
+			artifactRef: validDigest,
 			org:         "liatrio",
 			opts: Options{
 				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
@@ -326,14 +517,257 @@ func TestHandleBlobVerification(t *testing.T) {
 				BlobPath:     "/nonexistent/path",
 			},
 			wantErr: true,
+			errMsg:  "failed to read blob",
+		},
+		{
+			name:        "empty blob path",
+			artifactRef: validDigest,
+			org:         "liatrio",
+			client:      github.NewClient(nil).WithAuthToken(token),
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
+				CertIssuer:   DefaultCertIssuer,
+				BlobPath:     "",
+			},
+			wantErr: true,
+			errMsg:  "blob path is required",
+		},
+		{
+			name:        "nil client",
+			artifactRef: validDigest,
+			org:         "liatrio",
+			client:      nil,
+			opts: Options{
+				CertIdentity: "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main",
+				BlobPath:     validBlobPath,
+			},
+			wantErr: true,
+			errMsg:  "github client is required",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := handleBlobVerification(context.Background(), tt.artifactRef, tt.org, token, tt.opts)
+			client := tt.client
+			if client == nil && tt.name != "nil client" {
+				client = github.NewClient(nil).WithAuthToken(token)
+			}
+			_, err := handleBlobVerification(context.Background(), tt.artifactRef, tt.org, client, tt.opts, t.TempDir())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("handleBlobVerification() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.errMsg != "" && err != nil && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("handleBlobVerification() error = %v, want error containing %v", err, tt.errMsg)
+			}
+		})
+	}
+}
+
+func TestParseImageRef(t *testing.T) {
+	tests := []struct {
+		name       string
+		ref        string
+		wantOrg    string
+		wantRepo   string
+		wantDigest string
+		wantErr    bool
+	}{
+		{
+			name:       "basic reference",
+			ref:        "liatrio/repo@sha256:abc123",
+			wantOrg:    "liatrio",
+			wantRepo:   "repo",
+			wantDigest: "sha256:abc123",
+			wantErr:    false,
+		},
+		{
+			name:       "with registry",
+			ref:        "ghcr.io/liatrio/repo@sha256:abc123",
+			wantOrg:    "liatrio",
+			wantRepo:   "repo",
+			wantDigest: "sha256:abc123",
+			wantErr:    false,
+		},
+		{
+			name:       "with tag",
+			ref:        "liatrio/repo:latest@sha256:abc123",
+			wantOrg:    "liatrio",
+			wantRepo:   "repo",
+			wantDigest: "sha256:abc123",
+			wantErr:    false,
+		},
+		{
+			name:    "no digest",
+			ref:     "liatrio/repo",
+			wantErr: true,
+		},
+		{
+			name:    "invalid format",
+			ref:     "invalid@sha256:abc123",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			org, repo, digest, err := ParseImageRef(tt.ref)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseImageRef() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				if org != tt.wantOrg {
+					t.Errorf("ParseImageRef() org = %v, want %v", org, tt.wantOrg)
+				}
+				if repo != tt.wantRepo {
+					t.Errorf("ParseImageRef() repo = %v, want %v", repo, tt.wantRepo)
+				}
+				if digest != tt.wantDigest {
+					t.Errorf("ParseImageRef() digest = %v, want %v", digest, tt.wantDigest)
+				}
+			}
+		})
+	}
+}
+
+func TestNewDigest(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{
+			name:    "valid digest",
+			value:   "sha256:1234567890123456789012345678901234567890123456789012345678901234",
+			wantErr: false,
+		},
+		{
+			name:    "empty digest for blob",
+			value:   "",
+			wantErr: false,
+		},
+		{
+			name:    "invalid prefix",
+			value:   "invalid:abc123",
+			wantErr: true,
+		},
+		{
+			name:    "invalid length",
+			value:   "sha256:short",
+			wantErr: true,
+		},
+		{
+			name:    "missing colon",
+			value:   "sha256abc123",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d, err := NewDigest(tt.value)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewDigest() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && d.String() != tt.value {
+				t.Errorf("NewDigest() = %v, want %v", d.String(), tt.value)
+			}
+		})
+	}
+}
+
+func TestParseOrgRepoFromWorkflowURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		url      string
+		wantOrg  string
+		wantRepo string
+		wantErr  bool
+	}{
+		{
+			name:     "valid workflow url",
+			url:      "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main",
+			wantOrg:  "liatrio",
+			wantRepo: "autogov-verify",
+			wantErr:  false,
+		},
+		{
+			name:    "invalid url format",
+			url:     "invalid-url",
+			wantErr: true,
+		},
+		{
+			name:    "missing org/repo",
+			url:     "https://github.com/",
+			wantErr: true,
+		},
+		{
+			name:    "wrong hostname",
+			url:     "https://gitlab.com/org/repo/.github/workflows/test.yml",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			org, repo, err := parseOrgRepoFromWorkflowURL(tt.url)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseOrgRepoFromWorkflowURL() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				if org != tt.wantOrg {
+					t.Errorf("parseOrgRepoFromWorkflowURL() org = %v, want %v", org, tt.wantOrg)
+				}
+				if repo != tt.wantRepo {
+					t.Errorf("parseOrgRepoFromWorkflowURL() repo = %v, want %v", repo, tt.wantRepo)
+				}
+			}
+		})
+	}
+}
+
+func TestGetManifestWithOras(t *testing.T) {
+	// skip if no gh token available
+	token := getGitHubToken(t)
+
+	tests := []struct {
+		name    string
+		org     string
+		repo    string
+		digest  string
+		wantErr bool
+	}{
+		{
+			name:    "invalid org",
+			org:     "invalid-org-that-does-not-exist",
+			repo:    "repo",
+			digest:  "sha256:abc123def456789012345678901234567890123456789012345678901234",
+			wantErr: true,
+		},
+		{
+			name:    "empty org",
+			org:     "",
+			repo:    "repo",
+			digest:  "sha256:abc123def456789012345678901234567890123456789012345678901234",
+			wantErr: true,
+		},
+		{
+			name:    "empty repo",
+			org:     "liatrio",
+			repo:    "",
+			digest:  "sha256:abc123def456789012345678901234567890123456789012345678901234",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := github.NewClient(nil).WithAuthToken(token)
+			_, err := getManifestWithOras(context.Background(), tt.org, tt.repo, tt.digest, client)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getManifestWithOras() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}

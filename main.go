@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 
+	"github.com/google/go-github/v68/github"
 	"github.com/liatrio/autogov-verify/pkg/attestations"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -26,61 +26,51 @@ certificate identity and issuer.`,
 
 func init() {
 	// flags
-	rootCmd.Flags().StringP("wf-repo", "w", "", "autogov workflow repository name (required)")
-	rootCmd.Flags().StringP("owner", "o", "", "GitHub owner/organization name (required)")
-	rootCmd.Flags().StringP("artifact-digest", "d", "", "Full OCI reference or digest of the artifact to verify (optional when using --blob-path)")
+	rootCmd.Flags().StringP("artifact-digest", "d", "", "Full OCI reference in the format [registry/]org/repo[:tag]@digest")
 	rootCmd.Flags().String("blob-path", "", "Path to a blob file to verify attestations against")
 	rootCmd.Flags().StringP("cert-identity", "i", "", "Certificate identity to verify against (required)")
 	rootCmd.Flags().StringP("cert-issuer", "s", "https://token.actions.githubusercontent.com", "Certificate issuer to verify against")
 	rootCmd.Flags().StringP("expected-ref", "r", "", "Expected repository ref to verify against (e.g., refs/heads/main)")
 	rootCmd.Flags().BoolP("quiet", "q", false, "Only show errors and final results")
 
-	_ = rootCmd.MarkFlagRequired("owner")
-	_ = rootCmd.MarkFlagRequired("cert-identity")
-	_ = rootCmd.MarkFlagRequired("wf-repo")
-
 	rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		owner := viper.GetString("owner")
-		if owner == "" {
-			return fmt.Errorf("owner is required")
-		}
-
 		blobPath := viper.GetString("blob-path")
 		artifactDigest := viper.GetString("artifact-digest")
 		if blobPath == "" && artifactDigest == "" {
 			return fmt.Errorf("either --artifact-digest or --blob-path must be provided")
 		}
+
+		token := viper.GetString("token")
+		if token == "" {
+			return fmt.Errorf("GH_TOKEN, GITHUB_TOKEN or GITHUB_AUTH_TOKEN environment variable is required")
+		}
+
 		return nil
 	}
-
-	viper.SetEnvPrefix("GITHUB")
-	viper.AutomaticEnv()
 
 	if err := viper.BindPFlags(rootCmd.Flags()); err != nil {
 		panic(fmt.Sprintf("failed to bind flags: %v", err))
 	}
 
-	// bind environment variables for GitHub token
+	// bind env vars
 	if err := viper.BindEnv("token", "GH_TOKEN", "GITHUB_TOKEN", "GITHUB_AUTH_TOKEN"); err != nil {
+		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+	}
+	if err := viper.BindEnv("cert-identity", "CERT_IDENTITY"); err != nil {
+		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+	}
+	if err := viper.BindEnv("cert-issuer", "CERT_ISSUER"); err != nil {
+		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+	}
+	if err := viper.BindEnv("quiet", "QUIET"); err != nil {
+		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+	}
+	if err := viper.BindEnv("expected-ref", "EXPECTED_REF"); err != nil {
 		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
 	}
 }
 
-func parseDigestFromOCIRef(ref string) string {
-	if strings.Contains(ref, "@") {
-		parts := strings.Split(ref, "@")
-		return parts[len(parts)-1]
-	}
-	return ref
-}
-
 func run(cmd *cobra.Command, args []string) error {
-	// check auth token
-	token := viper.GetString("token")
-	if token == "" {
-		return fmt.Errorf("GH_TOKEN, GITHUB_TOKEN or GITHUB_AUTH_TOKEN environment variable is required")
-	}
-
 	quiet := viper.GetBool("quiet")
 	if !quiet {
 		fmt.Println("Starting verification process...")
@@ -89,23 +79,21 @@ func run(cmd *cobra.Command, args []string) error {
 
 	sigs, err := attestations.GetFromGitHub(
 		context.Background(),
-		parseDigestFromOCIRef(viper.GetString("artifact-digest")),
-		viper.GetString("owner"),
-		token,
+		viper.GetString("artifact-digest"),
+		github.NewClient(nil).WithAuthToken(viper.GetString("token")),
 		attestations.Options{
-			Repository:   viper.GetString("wf-repo"),
 			CertIdentity: viper.GetString("cert-identity"),
 			CertIssuer:   viper.GetString("cert-issuer"),
 			BlobPath:     viper.GetString("blob-path"),
 			ExpectedRef:  viper.GetString("expected-ref"),
-			Quiet:        quiet,
+			Quiet:        viper.GetBool("quiet"),
 		},
 	)
 	if err != nil {
 		return fmt.Errorf("error getting attestations: %w", err)
 	}
 
-	if !quiet {
+	if !viper.GetBool("quiet") {
 		fmt.Println("\nSummary:")
 		fmt.Printf("✓ Successfully verified %d attestations\n", len(sigs))
 		fmt.Println("\nAttestation Types:")
