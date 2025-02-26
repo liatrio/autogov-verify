@@ -1,1 +1,70 @@
-{ "enabled": false }
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "enabled": false,
+  "configMigration": true,
+  "extends": [
+    "config:recommended"
+  ],
+  "dependencyDashboard": false,
+  "constraints": {
+    "go": "1.23"
+  },
+  "schedule": [
+    "before 5am every weekday"
+  ],
+  "labels": [
+    "renovate",
+    "dependencies"
+  ],
+  "packageRules": [
+    {
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "groupName": "dockerfile deps"
+    },
+    {
+      "extends": [
+        ":semanticPrefixFixDepsChoreOthers",
+        "helpers:pinGitHubActionDigests"
+      ],
+      "matchManagers": [
+        "github-actions"
+      ],
+      "pinDigests": true,
+      "groupName": "github-actions deps"
+    },
+    {
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "prBodyNotes": [
+        ":warning: MAJOR VERSION UPDATE :warning: - please manually update this package"
+      ],
+      "labels": [
+        "dependency-major-update"
+      ]
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": [
+        "\\.github/workflows/.*\\.yaml$"
+      ],
+      "matchStrings": [
+        "(?:https://github\\.com/|)liatrio/demo-gh-autogov-workflows/\\.github/workflows/.*?\\.yaml@(?<currentDigest>[a-f0-9]+) # v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "liatrio/demo-gh-autogov-workflows",
+      "packageNameTemplate": "liatrio/demo-gh-autogov-workflows",
+      "datasourceTemplate": "github-tags"
+    }
+  ],
+  "prConcurrentLimit": 10,
+  "suppressNotifications": [
+    "prEditedNotification"
+  ]
+}
