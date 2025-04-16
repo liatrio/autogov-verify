@@ -154,7 +154,7 @@ func GetFromGitHub(ctx context.Context, imageRef string, client *github.Client, 
 		}
 
 		if !valid {
-			return nil, fmt.Errorf("certificate identity not found in approved list")
+			return nil, fmt.Errorf("certificate identity validation failed")
 		}
 
 		if !opts.Quiet {

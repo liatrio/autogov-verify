@@ -57,16 +57,11 @@ fi
 
 # Process command line arguments
 if [ $# -eq 0 ]; then
-  echo "Usage: $0 <certificate-identity> [identity-type]"
-  echo "identity-type can be: latest, approved, or all (default: all)"
+  echo "Usage: $0 <certificate-identity>"
   exit 1
 fi
 
 identity="$1"
-type="all"
-if [ $# -gt 1 ]; then
-  type="$2"
-fi
 
 # Create a simple Go program to validate certificate identities
 echo "Building validator..."
@@ -78,14 +73,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
-)
-
-// Identity types
-type IdentityType string
-const (
-	TypeLatest   IdentityType = "latest"
-	TypeApproved IdentityType = "approved"
-	TypeAll      IdentityType = "all"
+	"time"
 )
 
 // Certificate identity structure
@@ -95,6 +83,8 @@ type CertIdentity struct {
 	Description string `json:"description"`
 	Added       string `json:"added"`
 	Expires     string `json:"expires,omitempty"`
+	Revoked     string `json:"revoked,omitempty"`
+	Reason      string `json:"reason,omitempty"`
 }
 
 // Certificate identities file structure
@@ -106,16 +96,26 @@ type CertIdentities struct {
 }
 
 // Normalize GitHub reference
-// This handles converting short forms like "@main" to full refs "@refs/heads/main"
 func normalizeRef(ref string) string {
-	// Short ref like "main" to "refs/heads/main"
+	// Don't normalize if it looks like a commit SHA (40 hex chars)
+	if len(ref) == 40 && isHex(ref) {
+		return ref
+	}
+	
+	// Handle specific path prefixes
+	if strings.HasPrefix(ref, "heads/") {
+		return "refs/" + ref
+	}
+	
+	if strings.HasPrefix(ref, "tags/") {
+		return "refs/" + ref
+	}
+	
+	// Default case for branch names
 	if !strings.HasPrefix(ref, "refs/") {
-		// Check if it looks like a commit SHA (40 hex chars)
-		if len(ref) == 40 && isHex(ref) {
-			return ref // Return SHA as is
-		}
 		return "refs/heads/" + ref
 	}
+	
 	return ref
 }
 
@@ -149,17 +149,24 @@ func normalizeIdentity(identity string) string {
 }
 
 // Validate certificate identity
-func validateIdentity(identity string, idType IdentityType) (bool, error) {
+func validateIdentity(identity string) (bool, string, error) {
 	// Read cert-identities.json file
 	data, err := os.ReadFile("cert-identities.json")
 	if err != nil {
-		return false, fmt.Errorf("failed to read cert-identities.json: %w", err)
+		return false, "", fmt.Errorf("failed to read cert-identities.json: %w", err)
 	}
 	
 	// Parse JSON
 	var identities CertIdentities
 	if err := json.Unmarshal(data, &identities); err != nil {
-		return false, fmt.Errorf("failed to parse cert-identities.json: %w", err)
+		return false, "", fmt.Errorf("failed to parse cert-identities.json: %w", err)
+	}
+	
+	// Check if cert ID is revoked
+	for _, id := range identities.Revoked {
+		if id.Identity == identity {
+			return false, fmt.Sprintf("Identity is revoked: %s", id.Reason), nil
+		}
 	}
 	
 	// Normalize the identity for comparison
@@ -169,50 +176,47 @@ func validateIdentity(identity string, idType IdentityType) (bool, error) {
 		fmt.Printf("Normalized to:    %s\n", normalizedIdentity)
 	}
 	
-	// Check latest identities if needed
-	if idType == TypeLatest || idType == TypeAll {
-		for _, id := range identities.Latest {
-			if id.Identity == identity || id.Identity == normalizedIdentity {
-				fmt.Printf("Found in latest list as: %s\n", id.Identity)
-				return true, nil
-			}
+	// Check latest identities
+	for _, id := range identities.Latest {
+		if id.Identity == identity || id.Identity == normalizedIdentity {
+			fmt.Printf("Found in latest list as: %s\n", id.Identity)
+			return true, "", nil
 		}
 	}
 	
-	// Check approved identities if needed
-	if idType == TypeApproved || idType == TypeAll {
-		for _, id := range identities.Approved {
-			if id.Identity == identity || id.Identity == normalizedIdentity {
-				fmt.Printf("Found in approved list as: %s\n", id.Identity)
-				return true, nil
+	// Check approved identities
+	for _, id := range identities.Approved {
+		if id.Identity == identity || id.Identity == normalizedIdentity {
+			fmt.Printf("Found in approved list as: %s\n", id.Identity)
+			
+			// Check if expired
+			if id.Expires != "" {
+				expiryDate, err := time.Parse("2006-01-02", id.Expires)
+				if err != nil {
+					return false, "", fmt.Errorf("invalid expiry date format: %w", err)
+				}
+				if time.Now().After(expiryDate) {
+					return false, fmt.Sprintf("Certificate identity has expired (expiry: %s)", id.Expires), nil
+				}
 			}
+			
+			return true, "", nil
 		}
 	}
 	
-	// Not found in any checked lists
-	return false, nil
+	return false, "Certificate identity not found in any list", nil
 }
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: validator <cert-identity> [cert-identity-type]")
+		fmt.Println("Usage: validator <cert-identity>")
 		os.Exit(1)
 	}
 	
 	identity := os.Args[1]
-	idType := TypeAll
-	
-	if len(os.Args) > 2 {
-		switch IdentityType(os.Args[2]) {
-		case TypeLatest:
-			idType = TypeLatest
-		case TypeApproved:
-			idType = TypeApproved
-		}
-	}
 	
 	// Validate identity
-	valid, err := validateIdentity(identity, idType)
+	valid, message, err := validateIdentity(identity)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
@@ -222,7 +226,7 @@ func main() {
 		fmt.Printf("✅ SUCCESS: Certificate identity is valid\n")
 		os.Exit(0)
 	} else {
-		fmt.Printf("❌ FAILED: Certificate identity is not valid\n")
+		fmt.Printf("❌ FAILED: %s\n", message)
 		os.Exit(1)
 	}
 }
@@ -230,10 +234,9 @@ EOL
 
 # Build and run
 echo "Validating certificate identity: $identity"
-echo "Validation type: $type"
 echo "------------------------------------------"
 
-go run validator.go "$identity" "$type"
+go run validator.go "$identity"
 status=$?
 
 # Clean up
