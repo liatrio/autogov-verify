@@ -113,7 +113,7 @@ func TestRun(t *testing.T) {
 	}
 }
 
-func TestMain(t *testing.T) {
+func TestHelp(t *testing.T) {
 	// save current env
 	savedEnv := make(map[string]string)
 	for _, key := range []string{"GITHUB_TOKEN", "GH_TOKEN", "GITHUB_AUTH_TOKEN", "CERT_IDENTITY"} {
