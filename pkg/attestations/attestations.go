@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 
 	"github.com/google/go-github/v68/github"
+	"github.com/liatrio/autogov-verify/pkg/certid"
 	"github.com/liatrio/autogov-verify/pkg/root"
 	"github.com/liatrio/autogov-verify/pkg/storage"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
@@ -73,6 +74,8 @@ type Options struct {
 	CertIssuer string
 	// reduces output verbosity
 	Quiet bool
+	// CertIdentityValidation options for validating certificate identities
+	CertIdentityValidation *certid.Options
 }
 
 // parses a full OCI ref into components
@@ -133,6 +136,31 @@ func GetFromGitHub(ctx context.Context, imageRef string, client *github.Client, 
 	var org, repo string
 	var artifactRef *Digest
 	var err error
+
+	// validate certificate identity if validation options provided
+	if opts.CertIdentity != "" && opts.CertIdentityValidation != nil {
+		// create cert identity validator
+		validator := certid.NewValidator(*opts.CertIdentityValidation)
+
+		// load identities
+		if err := validator.LoadIdentities(ctx); err != nil {
+			return nil, fmt.Errorf("failed to load certificate identities: %w", err)
+		}
+
+		// validate certificate identity
+		valid, err := validator.IsValidIdentity(opts.CertIdentity)
+		if err != nil {
+			return nil, fmt.Errorf("invalid certificate identity: %w", err)
+		}
+
+		if !valid {
+			return nil, fmt.Errorf("certificate identity not found in approved list")
+		}
+
+		if !opts.Quiet {
+			fmt.Printf("✓ Certificate identity validated against source of truth\n")
+		}
+	}
 
 	if opts.BlobPath != "" {
 		org, repo, err = parseOrgRepoFromWorkflowURL(opts.CertIdentity)
