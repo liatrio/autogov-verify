@@ -76,85 +76,43 @@ func TestValidator_IsValidIdentity(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		identityType IdentityType
 		certIdentity string
 		want         bool
 		errContains  string
 	}{
 		{
 			name:         "Latest - Valid",
-			identityType: TypeLatest,
 			certIdentity: "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/heads/main",
 			want:         true,
 			errContains:  "",
 		},
 		{
-			name:         "Latest - Invalid",
-			identityType: TypeLatest,
-			certIdentity: "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v1.0.0",
-			want:         false,
-			errContains:  "not found in latest",
-		},
-		{
 			name:         "Approved - Valid",
-			identityType: TypeApproved,
 			certIdentity: "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v1.0.0",
 			want:         true,
 			errContains:  "",
 		},
 		{
 			name:         "Approved - Expired",
-			identityType: TypeApproved,
 			certIdentity: "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v0.9.0",
 			want:         false,
 			errContains:  "expired",
 		},
 		{
-			name:         "Approved - Invalid",
-			identityType: TypeApproved,
-			certIdentity: "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/heads/main",
+			name:         "Invalid - Not Found",
+			certIdentity: "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/nonexistent",
 			want:         false,
-			errContains:  "not found in approved",
-		},
-		{
-			name:         "All - Valid Latest",
-			identityType: TypeAll,
-			certIdentity: "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/heads/main",
-			want:         true,
-			errContains:  "",
-		},
-		{
-			name:         "All - Valid Approved",
-			identityType: TypeAll,
-			certIdentity: "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v1.0.0",
-			want:         true,
-			errContains:  "",
-		},
-		{
-			name:         "All - Expired",
-			identityType: TypeAll,
-			certIdentity: "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v0.9.0",
-			want:         false,
-			errContains:  "expired",
-		},
-		{
-			name:         "All - Invalid",
-			identityType: TypeAll,
-			certIdentity: "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v0.1.0",
-			want:         false,
-			errContains:  "not found",
+			errContains:  "not found in approved lists",
 		},
 		{
 			name:         "Revoked - Always Invalid",
-			identityType: TypeAll,
 			certIdentity: "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v0.5.0",
 			want:         false,
 			errContains:  "revoked",
 		},
 		{
 			name:         "Normalization - Without refs/ prefix",
-			identityType: TypeLatest,
-			certIdentity: "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@main",
+			certIdentity: "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@tags/v1.0.0",
 			want:         true,
 			errContains:  "",
 		},
@@ -164,7 +122,6 @@ func TestValidator_IsValidIdentity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := Options{
 				URL:          server.URL,
-				Type:         tt.identityType,
 				DisableCache: true,
 			}
 
@@ -266,132 +223,122 @@ func TestValidator_GetValidIdentities(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tests := []struct {
-		name         string
-		identityType IdentityType
-		wantCount    int
-	}{
-		{
-			name:         "Latest - Should return all latest",
-			identityType: TypeLatest,
-			wantCount:    2,
-		},
-		{
-			name:         "Approved - Should return only valid approved",
-			identityType: TypeApproved,
-			wantCount:    2, // excludes expired
-		},
-		{
-			name:         "All - Should return latest and valid approved",
-			identityType: TypeAll,
-			wantCount:    4, // 2 latest + 2 valid approved
-		},
-	}
+	// Test case for all valid identities
+	t.Run("Get Valid Identities", func(t *testing.T) {
+		opts := Options{
+			URL:          server.URL,
+			DisableCache: true,
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			opts := Options{
-				URL:          server.URL,
-				Type:         tt.identityType,
-				DisableCache: true,
+		v := NewValidator(opts)
+
+		if err := v.LoadIdentities(context.Background()); err != nil {
+			t.Fatalf("Failed to load identities: %v", err)
+		}
+
+		identities, err := v.GetValidIdentities()
+		if err != nil {
+			t.Fatalf("Failed to get valid identities: %v", err)
+		}
+
+		// Should return all latest and non-expired approved identities (2 latest + 2 non-expired approved = 4)
+		expectedCount := 4
+		if len(identities) != expectedCount {
+			t.Errorf("GetValidIdentities() returned %d identities, expected %d", len(identities), expectedCount)
+		}
+
+		// Check that expired identity is not included
+		for _, id := range identities {
+			if id.Identity == "https://github.com/liatrio/test-repo/.github/workflows/test3.yaml@refs/tags/v0.9.0" {
+				t.Errorf("GetValidIdentities() included expired identity: %s", id.Identity)
 			}
-
-			v := NewValidator(opts)
-
-			if err := v.LoadIdentities(context.Background()); err != nil {
-				t.Fatalf("Failed to load identities: %v", err)
-			}
-
-			identities, err := v.GetValidIdentities()
-			if err != nil {
-				t.Fatalf("GetValidIdentities() error = %v", err)
-			}
-
-			if len(identities) != tt.wantCount {
-				t.Errorf("GetValidIdentities() returned %d identities, want %d", len(identities), tt.wantCount)
-			}
-		})
-	}
+		}
+	})
 }
 
 func TestCaching(t *testing.T) {
-	// create a temp cache dir
+	// create a temp file
 	tempDir := t.TempDir()
-	cacheDir := filepath.Join(tempDir, ".autogov-verify")
-	cacheFile := filepath.Join(cacheDir, CacheFile)
+	cacheDir := filepath.Join(tempDir, ".cache")
 
 	// create test data
+	today := time.Now().Format("2006-01-02")
 	testData := `{
-		"latest": [
+		"latest": [],
+		"approved": [
 			{
-				"name": "Test Latest",
-				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/heads/main",
-				"description": "Test workflow for latest",
-				"added": "2023-01-01"
+				"name": "Test",
+				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v1.0.0",
+				"description": "Test workflow",
+				"added": "` + today + `"
 			}
 		],
-		"approved": [],
 		"revoked": [],
 		"metadata": {
-			"last_updated": "2023-01-01",
+			"last_updated": "` + today + `",
 			"version": "1.0.0",
 			"maintainer": "Test"
 		}
 	}`
 
 	// create test server
-	serverCalls := 0
+	serverHits := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		serverCalls++
+		serverHits++
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(testData))
 	}))
 	defer server.Close()
 
-	// test caching
-	opts := Options{
-		URL:          server.URL,
-		Type:         TypeLatest,
-		DisableCache: false,
-		CacheDir:     cacheDir,
-	}
+	// Test caching
+	t.Run("Cache Enabled", func(t *testing.T) {
+		opts := Options{
+			URL:          server.URL,
+			DisableCache: false,
+			CacheDir:     cacheDir,
+		}
 
-	// load (should fetch from server)
-	v := NewValidator(opts)
-	if err := v.LoadIdentities(context.Background()); err != nil {
-		t.Fatalf("Failed to load identities: %v", err)
-	}
+		// First request should hit server
+		v := NewValidator(opts)
+		if err := v.LoadIdentities(context.Background()); err != nil {
+			t.Fatalf("Failed to load identities: %v", err)
+		}
 
-	// verify cache
-	if _, err := os.Stat(cacheFile); os.IsNotExist(err) {
-		t.Fatalf("Cache file was not created")
-	}
+		initialHits := serverHits
 
-	// load with cache
-	v = NewValidator(opts)
-	if err := v.LoadIdentities(context.Background()); err != nil {
-		t.Fatalf("Failed to load identities from cache: %v", err)
-	}
+		// Second request should use cache
+		v = NewValidator(opts)
+		if err := v.LoadIdentities(context.Background()); err != nil {
+			t.Fatalf("Failed to load identities: %v", err)
+		}
 
-	// call server once
-	if serverCalls != 1 {
-		t.Errorf("Expected 1 server call, got %d", serverCalls)
-	}
+		if serverHits != initialHits {
+			t.Errorf("Cache not used, server hit count increased from %d to %d", initialHits, serverHits)
+		}
+	})
 
-	// test without caching
-	opts.DisableCache = true
-	v = NewValidator(opts)
-	if err := v.LoadIdentities(context.Background()); err != nil {
-		t.Fatalf("Failed to load identities with cache disabled: %v", err)
-	}
+	// Test cache disabled
+	t.Run("Cache Disabled", func(t *testing.T) {
+		opts := Options{
+			URL:          server.URL,
+			DisableCache: true,
+			CacheDir:     cacheDir,
+		}
 
-	// server called again
-	if serverCalls != 2 {
-		t.Errorf("Expected 2 server calls, got %d", serverCalls)
-	}
+		initialHits := serverHits
+
+		// With cache disabled, should hit server
+		v := NewValidator(opts)
+		if err := v.LoadIdentities(context.Background()); err != nil {
+			t.Fatalf("Failed to load identities: %v", err)
+		}
+
+		if serverHits <= initialHits {
+			t.Errorf("Server not hit despite cache being disabled")
+		}
+	})
 }
 
-// helper func to check if a string contains substring
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }

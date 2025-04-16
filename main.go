@@ -36,7 +36,6 @@ func init() {
 
 	// certificate identity validation flags
 	rootCmd.Flags().String("cert-identity-source", "", "URL to the certificate identity list. If provided, validates cert-identity against this source. Default: https://raw.githubusercontent.com/liatrio/liatrio-gh-autogov-workflows/main/cert-identities.json")
-	rootCmd.Flags().String("cert-identity-type", string(certid.TypeApproved), "Type of certificate identities to validate against (latest, approved, or all)")
 	rootCmd.Flags().Bool("no-cache", false, "Disable caching of the certificate identity list")
 
 	rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
@@ -77,9 +76,6 @@ func init() {
 	if err := viper.BindEnv("cert-identity-source", "CERT_IDENTITY_SOURCE"); err != nil {
 		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
 	}
-	if err := viper.BindEnv("cert-identity-type", "CERT_IDENTITY_TYPE"); err != nil {
-		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
-	}
 	if err := viper.BindEnv("no-cache", "NO_CACHE"); err != nil {
 		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
 	}
@@ -94,18 +90,8 @@ func run(cmd *cobra.Command, args []string) error {
 
 	// set up certificate identity validation options if cert-identity-source is provided
 	var certIdentityOpts *certid.Options
-	if viper.GetString("cert-identity-source") != "" || viper.GetString("cert-identity-type") != string(certid.TypeApproved) {
-		// parse identity type
-		idType := certid.TypeApproved
-		switch viper.GetString("cert-identity-type") {
-		case string(certid.TypeLatest):
-			idType = certid.TypeLatest
-		case string(certid.TypeAll):
-			idType = certid.TypeAll
-		}
-
+	if viper.GetString("cert-identity-source") != "" {
 		opts := certid.DefaultOptions()
-		opts.Type = idType
 		opts.DisableCache = viper.GetBool("no-cache")
 
 		// Use provided URL if specified, otherwise use default
@@ -118,7 +104,6 @@ func run(cmd *cobra.Command, args []string) error {
 		if !quiet {
 			fmt.Println("Certificate identity validation enabled")
 			fmt.Printf("Using identity source: %s\n", opts.URL)
-			fmt.Printf("Identity type: %s\n", opts.Type)
 			if opts.DisableCache {
 				fmt.Println("Cache disabled")
 			}
