@@ -17,9 +17,13 @@ func TestRun(t *testing.T) {
 	defer func() {
 		for key, value := range savedEnv {
 			if value == "" {
-				os.Unsetenv(key)
+				if err := os.Unsetenv(key); err != nil {
+					t.Logf("Warning: failed to unset environment variable %s: %v", key, err)
+				}
 			} else {
-				os.Setenv(key, value)
+				if err := os.Setenv(key, value); err != nil {
+					t.Logf("Warning: failed to restore environment variable %s: %v", key, err)
+				}
 			}
 		}
 	}()
@@ -95,10 +99,14 @@ func TestRun(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// set env vars for test
 			for key := range savedEnv {
-				os.Unsetenv(key)
+				if err := os.Unsetenv(key); err != nil {
+					t.Fatalf("Failed to unset environment variable %s: %v", key, err)
+				}
 			}
 			for key, value := range tt.envVars {
-				os.Setenv(key, value)
+				if err := os.Setenv(key, value); err != nil {
+					t.Fatalf("Failed to set environment variable %s: %v", key, err)
+				}
 			}
 
 			rootCmd.SetArgs(tt.args)
@@ -124,16 +132,22 @@ func TestHelp(t *testing.T) {
 	defer func() {
 		for key, value := range savedEnv {
 			if value == "" {
-				os.Unsetenv(key)
+				if err := os.Unsetenv(key); err != nil {
+					t.Logf("Warning: failed to unset environment variable %s: %v", key, err)
+				}
 			} else {
-				os.Setenv(key, value)
+				if err := os.Setenv(key, value); err != nil {
+					t.Logf("Warning: failed to restore environment variable %s: %v", key, err)
+				}
 			}
 		}
 	}()
 
 	// unset all env vars for test
 	for key := range savedEnv {
-		os.Unsetenv(key)
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatalf("Failed to unset environment variable %s: %v", key, err)
+		}
 	}
 
 	// test help output

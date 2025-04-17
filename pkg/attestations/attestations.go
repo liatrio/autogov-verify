@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,7 +75,7 @@ type Options struct {
 	CertIssuer string
 	// reduces output verbosity
 	Quiet bool
-	// CertIdentityValidation options for validating certificate identities
+	// options for cert-identity validation
 	CertIdentityValidation *certid.Options
 }
 
@@ -215,9 +216,56 @@ func GetFromGitHub(ctx context.Context, imageRef string, client *github.Client, 
 	}
 
 	// fetch manifest
-	manifest, err := getManifestWithOras(ctx, org, repo, artifactRef.String(), client)
+	repoRef := fmt.Sprintf("ghcr.io/%s/%s", org, repo)
+	remoteRepo, err := remote.NewRepository(repoRef)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get manifest: %w", err)
+		return nil, fmt.Errorf("failed to create repository: %w", err)
+	}
+
+	// get token from client's transport/env
+	var token string
+	if t, ok := client.Client().Transport.(*github.BasicAuthTransport); ok {
+		token = t.Password
+	}
+
+	// if no token from transport/env, try env vars
+	if token == "" {
+		token = os.Getenv("GH_TOKEN")
+		if token == "" {
+			token = os.Getenv("GITHUB_TOKEN")
+		}
+		if token == "" {
+			token = os.Getenv("GITHUB_AUTH_TOKEN")
+		}
+		if token == "" {
+			return nil, fmt.Errorf("no token found in github client transport or environment")
+		}
+	}
+
+	// auth config
+	remoteRepo.Client = &auth.Client{
+		Client: retry.DefaultClient,
+		Cache:  auth.NewCache(),
+		Credential: auth.StaticCredential("ghcr.io", auth.Credential{
+			Username: org,
+			Password: token,
+		}),
+	}
+
+	// fetch manifest
+	_, manifestReader, err := remoteRepo.Manifests().FetchReference(ctx, artifactRef.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch manifest: %w", err)
+	}
+	defer func() {
+		if closeErr := manifestReader.Close(); closeErr != nil {
+			log.Printf("Warning: failed to close manifest reader: %v", closeErr)
+		}
+	}()
+
+	manifest, err := io.ReadAll(manifestReader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read manifest: %w", err)
 	}
 
 	manifestPath := filepath.Join(cacheDir, "manifest.json")
@@ -276,7 +324,7 @@ func setDefaultOptions(opts Options) Options {
 func getManifestWithOras(ctx context.Context, org, repository, artifactRef string, client *github.Client) ([]byte, error) {
 	// create repo ref
 	repoRef := fmt.Sprintf("ghcr.io/%s/%s", org, repository)
-	repo, err := remote.NewRepository(repoRef)
+	remoteRepo, err := remote.NewRepository(repoRef)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository: %w", err)
 	}
@@ -302,7 +350,7 @@ func getManifestWithOras(ctx context.Context, org, repository, artifactRef strin
 	}
 
 	// auth config
-	repo.Client = &auth.Client{
+	remoteRepo.Client = &auth.Client{
 		Client: retry.DefaultClient,
 		Cache:  auth.NewCache(),
 		Credential: auth.StaticCredential("ghcr.io", auth.Credential{
@@ -312,11 +360,15 @@ func getManifestWithOras(ctx context.Context, org, repository, artifactRef strin
 	}
 
 	// fetch manifest
-	_, manifestReader, err := repo.Manifests().FetchReference(ctx, artifactRef)
+	_, manifestReader, err := remoteRepo.Manifests().FetchReference(ctx, artifactRef)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch manifest: %w", err)
 	}
-	defer manifestReader.Close()
+	defer func() {
+		if closeErr := manifestReader.Close(); closeErr != nil {
+			log.Printf("Warning: failed to close manifest reader: %v", closeErr)
+		}
+	}()
 
 	return io.ReadAll(manifestReader)
 }

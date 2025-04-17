@@ -1,9 +1,9 @@
 #!/bin/bash
 set -eo pipefail
 
-# Simple script to validate certificate identities locally
+# test script that validates certificate identities locally
 
-# Check if cert-identities.json exists
+# do cert-identities.json exists ?
 if [ ! -f cert-identities.json ]; then
   echo "Creating cert-identities.json in current directory..."
   cat > cert-identities.json << 'EOL'
@@ -55,7 +55,7 @@ if [ ! -f cert-identities.json ]; then
 EOL
 fi
 
-# Process command line arguments
+# cli args
 if [ $# -eq 0 ]; then
   echo "Usage: $0 <certificate-identity>"
   exit 1
@@ -63,7 +63,7 @@ fi
 
 identity="$1"
 
-# Create a simple Go program to validate certificate identities
+# basic go app to validate cert-ids
 echo "Building validator..."
 cat > validator.go << 'EOL'
 package main
@@ -76,7 +76,7 @@ import (
 	"time"
 )
 
-// Certificate identity structure
+cert-id struct
 type CertIdentity struct {
 	Name        string `json:"name"`
 	Identity    string `json:"identity"`
@@ -87,7 +87,7 @@ type CertIdentity struct {
 	Reason      string `json:"reason,omitempty"`
 }
 
-// Certificate identities file structure
+// cert-id file struct
 type CertIdentities struct {
 	Latest   []CertIdentity       `json:"latest"`
 	Approved []CertIdentity       `json:"approved"`
@@ -95,14 +95,14 @@ type CertIdentities struct {
 	Metadata map[string]string    `json:"metadata"`
 }
 
-// Normalize GitHub reference
+// normalize gh refs
 func normalizeRef(ref string) string {
-	// Don't normalize if it looks like a commit SHA (40 hex chars)
+	// no normalize if it looks like a commit SHA (40 hex chars)
 	if len(ref) == 40 && isHex(ref) {
 		return ref
 	}
 	
-	// Handle specific path prefixes
+	// handle specific path prefixes
 	if strings.HasPrefix(ref, "heads/") {
 		return "refs/" + ref
 	}
@@ -111,7 +111,7 @@ func normalizeRef(ref string) string {
 		return "refs/" + ref
 	}
 	
-	// Default case for branch names
+	// default case for branch names
 	if !strings.HasPrefix(ref, "refs/") {
 		return "refs/heads/" + ref
 	}
@@ -119,7 +119,7 @@ func normalizeRef(ref string) string {
 	return ref
 }
 
-// Check if string is hex
+// checks hex
 func isHex(s string) bool {
 	for _, r := range s {
 		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
@@ -129,7 +129,7 @@ func isHex(s string) bool {
 	return true
 }
 
-// Normalize a full cert identity URL
+// normalize full cert0id url
 func normalizeIdentity(identity string) string {
 	parts := strings.Split(identity, "@")
 	if len(parts) != 2 {
@@ -139,7 +139,7 @@ func normalizeIdentity(identity string) string {
 	baseURL := parts[0]
 	ref := parts[1]
 	
-	// Normalize the ref part
+	// norm ref part
 	normalizedRef := normalizeRef(ref)
 	if normalizedRef == ref {
 		return identity // No change needed
@@ -148,35 +148,32 @@ func normalizeIdentity(identity string) string {
 	return baseURL + "@" + normalizedRef
 }
 
-// Validate certificate identity
+// validate certificate identity
 func validateIdentity(identity string) (bool, string, error) {
-	// Read cert-identities.json file
 	data, err := os.ReadFile("cert-identities.json")
 	if err != nil {
 		return false, "", fmt.Errorf("failed to read cert-identities.json: %w", err)
 	}
 	
-	// Parse JSON
+	// parse json
 	var identities CertIdentities
 	if err := json.Unmarshal(data, &identities); err != nil {
 		return false, "", fmt.Errorf("failed to parse cert-identities.json: %w", err)
 	}
 	
-	// Check if cert ID is revoked
+	// check if revoked
 	for _, id := range identities.Revoked {
 		if id.Identity == identity {
 			return false, fmt.Sprintf("Identity is revoked: %s", id.Reason), nil
 		}
 	}
 	
-	// Normalize the identity for comparison
 	normalizedIdentity := normalizeIdentity(identity)
 	fmt.Printf("Original identity: %s\n", identity)
 	if normalizedIdentity != identity {
 		fmt.Printf("Normalized to:    %s\n", normalizedIdentity)
 	}
 	
-	// Check latest identities
 	for _, id := range identities.Latest {
 		if id.Identity == identity || id.Identity == normalizedIdentity {
 			fmt.Printf("Found in latest list as: %s\n", id.Identity)
@@ -184,12 +181,12 @@ func validateIdentity(identity string) (bool, string, error) {
 		}
 	}
 	
-	// Check approved identities
+	// check approved
 	for _, id := range identities.Approved {
 		if id.Identity == identity || id.Identity == normalizedIdentity {
 			fmt.Printf("Found in approved list as: %s\n", id.Identity)
 			
-			// Check if expired
+			// check expired
 			if id.Expires != "" {
 				expiryDate, err := time.Parse("2006-01-02", id.Expires)
 				if err != nil {
@@ -215,7 +212,6 @@ func main() {
 	
 	identity := os.Args[1]
 	
-	// Validate identity
 	valid, message, err := validateIdentity(identity)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)

@@ -31,7 +31,11 @@ func TestReadWriteAttestations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(dirPath)
+	defer func() {
+		if err := os.RemoveAll(dirPath); err != nil {
+			t.Logf("Warning: failed to clean up temp dir: %v", err)
+		}
+	}()
 
 	digest := "sha256:abc123"
 	ctx := context.Background()
@@ -109,6 +113,15 @@ func TestReadWriteAttestationsErrors(t *testing.T) {
 }
 
 func TestCreateTempDir(t *testing.T) {
+	// create temp dir to verify basic functionality
+	_, cleanup, err := CreateTempDir("test-")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	// clean up
+	defer cleanup()
+
 	tests := []struct {
 		name    string
 		prefix  string
@@ -171,7 +184,10 @@ func TestCleanupTempDir(t *testing.T) {
 			name: "non-temp directory",
 			setup: func() (string, error) {
 				dir := filepath.Join("testdata", "non-temp")
-				return dir, os.MkdirAll(dir, 0755)
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					return "", fmt.Errorf("failed to create directory: %w", err)
+				}
+				return dir, nil
 			},
 			wantErr:  false,
 			wantFile: true, // should still exist since not under os.TempDir()
@@ -208,7 +224,9 @@ func TestCleanupTempDir(t *testing.T) {
 
 			// testdata dir after test
 			if strings.HasPrefix(dir, "testdata") {
-				os.RemoveAll("testdata")
+				if err := os.RemoveAll("testdata"); err != nil {
+					t.Logf("Warning: failed to clean up testdata directory: %v", err)
+				}
 			}
 		})
 	}
@@ -245,4 +263,13 @@ func TestReadWriteAttestationsInvalidJSON(t *testing.T) {
 	if err == nil {
 		t.Error("ReadAttestationsFromDir() should fail with invalid JSON")
 	}
+}
+
+func TestCleanupTestStructure(t *testing.T) {
+	// cleanup test structure
+	t.Cleanup(func() {
+		if err := os.RemoveAll("testdata"); err != nil {
+			t.Logf("Warning: failed to clean up testdata directory: %v", err)
+		}
+	})
 }
