@@ -70,7 +70,10 @@ func TestValidator_IsValidIdentity(t *testing.T) {
 	// create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(testData))
+		_, err := w.Write([]byte(testData))
+		if err != nil {
+			t.Fatalf("Failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -219,7 +222,10 @@ func TestValidator_GetValidIdentities(t *testing.T) {
 	// create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(testData))
+		_, err := w.Write([]byte(testData))
+		if err != nil {
+			t.Fatalf("Failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -286,7 +292,10 @@ func TestCaching(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		serverHits++
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(testData))
+		_, err := w.Write([]byte(testData))
+		if err != nil {
+			t.Fatalf("Failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 

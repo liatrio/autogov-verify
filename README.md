@@ -138,7 +138,7 @@ And one of the following:
 
 ### Optional Flags
 
-- `--cert-issuer, -s`: Certificate issuer to verify against (default: <https://token.actions.githubusercontent.com>)
+- `--cert-issuer, -s`: Certificate issuer to verify against (default: https://token.actions.githubusercontent.com)
 - `--expected-ref, -r`: Expected repository ref to verify against (e.g., refs/heads/main)
 - `--quiet, -q`: Only show errors and final results
 
@@ -146,7 +146,7 @@ And one of the following:
 
 The tool supports validating certificate identities against a source of truth list:
 
-- `--cert-identity-source`: URL to the certificate identity list for validation. If provided, validates the cert-identity against this source. Default: <https://raw.githubusercontent.com/liatrio/liatrio-gh-autogov-workflows/main/cert-identities.json>
+- `--cert-identity-source`: URL to the certificate identity list for validation. If provided, validates the cert-identity against this source. Default: https://raw.githubusercontent.com/liatrio/liatrio-gh-autogov-workflows/main/cert-identities.json
 - `--no-cache`: Disable caching of the certificate identity list
 
 The certificate identity source of truth is a JSON file with the following structure:
@@ -245,21 +245,6 @@ autogov-verify \
   --cert-identity-source "https://raw.githubusercontent.com/liatrio/liatrio-gh-autogov-workflows/main/cert-identities.json"
 ```
 
-### Certificate Identity Validation Script
-
-The repository includes a standalone `validate-cert-identity.sh` script that can be used to quickly validate certificate identities against a local `cert-identities.json` file. This is useful for testing and debugging certificate identity validation without running the full verification process.
-
-```bash
-./validate-cert-identity.sh "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@d709edc9cc501e27f390b7818c9262075ee9e0da"
-```
-
-The script:
-- Creates a local `cert-identities.json` file if one doesn't exist
-- Validates the provided certificate identity against both the latest and approved lists
-- Normalizes branch and tag references for consistent comparison
-- Checks for expired or revoked identities
-- Provides detailed output about the validation process
-
 ## Output
 
 The tool provides detailed output about the verification process:
@@ -278,6 +263,12 @@ Verifying attestation 1 (https://in-toto.io/attestation/vulns/v0.1)...
 
 Summary:
 ✓ Successfully verified 4 attestations
+
+Attestation Types:
+1. https://in-toto.io/attestation/vulns/v0.1
+2. https://cyclonedx.org/bom
+3. https://slsa.dev/provenance/v1
+4. https://cosign.sigstore.dev/attestation/v1
 ```
 
 ## Troubleshooting

@@ -117,7 +117,12 @@ func (v *Validator) LoadIdentities(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to fetch remote identity file: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Non-fatal error, just log it
+			fmt.Printf("Warning: failed to close response body: %v\n", closeErr)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to fetch remote identity file: %s", resp.Status)
@@ -185,8 +190,7 @@ func (v *Validator) IsValidIdentity(certIdentity string) (bool, error) {
 		}
 	}
 
-	// normalize certIdentity by ensuring it has @refs/ format
-	// supports both branch and tag references
+	// normalize certIdentity by ensuring it has @refs/ format (e.g. branch / tag refs)
 	normalizedIdentity := certIdentity
 	if !strings.Contains(certIdentity, "@refs/") {
 		parts := strings.Split(certIdentity, "@")
@@ -206,14 +210,14 @@ func (v *Validator) IsValidIdentity(certIdentity string) (bool, error) {
 		}
 	}
 
-	// Check latest list first
+	// check latest
 	for _, id := range v.list.Latest {
 		if id.Identity == normalizedIdentity || id.Identity == certIdentity {
 			return true, nil
 		}
 	}
 
-	// Check approved list
+	// check approved
 	for _, id := range v.list.Approved {
 		if id.Identity == normalizedIdentity || id.Identity == certIdentity {
 			// check if expired
@@ -222,6 +226,8 @@ func (v *Validator) IsValidIdentity(certIdentity string) (bool, error) {
 				if err != nil {
 					return false, fmt.Errorf("invalid expiry date format: %w", err)
 				}
+				// add a day to consider it valid throughout the expiry date itself
+				expiryDate = expiryDate.AddDate(0, 0, 1)
 				if time.Now().After(expiryDate) {
 					return false, fmt.Errorf("certificate identity has expired")
 				}
@@ -236,7 +242,7 @@ func (v *Validator) IsValidIdentity(certIdentity string) (bool, error) {
 // helper fuunc checks if a string is a valid hex string (for sha validation)
 func isHexString(s string) bool {
 	for _, r := range s {
-		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') && (r < 'A' || r > 'F') {
 			return false
 		}
 	}
@@ -256,10 +262,10 @@ func (v *Validator) GetValidIdentities() ([]Identity, error) {
 
 	var validIdentities []Identity
 
-	// Add all latest identities
+	// add latest cert-ids
 	validIdentities = append(validIdentities, v.list.Latest...)
 
-	// Add non-expired approved identities
+	// add non-expired / approved cert-ids
 	for _, id := range v.list.Approved {
 		// check if expired
 		if id.Expires != "" {
@@ -267,6 +273,8 @@ func (v *Validator) GetValidIdentities() ([]Identity, error) {
 			if err != nil {
 				return nil, fmt.Errorf("invalid expiry date format: %w", err)
 			}
+			// add a day to consider it valid throughout the expiry date itself
+			expiryDate = expiryDate.AddDate(0, 0, 1)
 			// skip expired cert-ids
 			if time.Now().After(expiryDate) {
 				continue
