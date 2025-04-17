@@ -155,35 +155,36 @@ The certificate identity source of truth is a JSON file with the following struc
 {
   "latest": [
     {
-      "name": "HP Attest Image",
-      "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main",
-      "description": "High privilege workflow for attesting container images",
-      "added": "2023-06-01"
+      "name": "HP Attest Image v0.4.0",
+      "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@d709edc9cc501e27f390b7818c9262075ee9e0da",
+      "description": "High privilege workflow for attesting container images (latest stable release)",
+      "added": "2025-03-14",
+      "expires": "2026-03-14"
     }
   ],
   "approved": [
     {
-      "name": "HP Attest Image v1.0.0",
-      "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@d709edc9cc501e27f390b7818c9262075ee9e0da",
-      "description": "High privilege workflow for attesting container images",
-      "added": "2023-06-01",
-      "expires": "2024-06-01"
+      "name": "HP Attest Image v0.3.0",
+      "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@13beea17d7d364f50a6e16dfef3bc53147c4677e",
+      "description": "High privilege workflow for attesting container images (previous stable release)",
+      "added": "2025-02-26",
+      "expires": "2025-08-26"
     }
   ],
   "revoked": [
     {
-      "name": "Old HP Attest Image",
+      "name": "HP Attest Image v0.1.0",
       "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@07d7909c528adbb8ba4af60592eb9c4a11654b6b",
       "description": "Deprecated high privilege workflow for attesting container images",
-      "added": "2023-01-01",
-      "revoked": "2023-05-01",
-      "reason": "Security vulnerability in workflow"
+      "added": "2024-11-29",
+      "revoked": "2025-01-30",
+      "reason": "Multiple security fixes and bug fixes in later versions"
     }
   ],
   "metadata": {
-    "last_updated": "2023-06-01",
-    "version": "1.0.0",
-    "maintainer": "Liatrio"
+    "last_updated": "2025-03-14",
+    "version": "v0.4.0",
+    "maintainer": "@liatrio/tag-autogov"
   }
 }
 ```
@@ -210,9 +211,9 @@ Verify a container image:
 ```bash
 export GITHUB_AUTH_TOKEN=your_token
 autogov-verify \
-  --cert-identity "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/feat/add-dependency-scan" \
+  --cert-identity "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@d709edc9cc501e27f390b7818c9262075ee9e0da" \
   --artifact-digest "ghcr.io/liatrio/demo-gh-autogov-workflows@sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682" \
-  --expected-ref refs/heads/feat/add-dependency-scan
+  --expected-ref refs/heads/main
 ```
 
 Verify a blob file:
@@ -220,7 +221,7 @@ Verify a blob file:
 ```bash
 export GITHUB_AUTH_TOKEN=your_token
 autogov-verify \
-  --cert-identity "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-blob.yaml@refs/heads/main" \
+  --cert-identity "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-blob.yaml@d709edc9cc501e27f390b7818c9262075ee9e0da" \
   --blob-path path/to/your/file \
   --expected-ref refs/heads/main
 ```
@@ -229,7 +230,7 @@ Using environment variables:
 
 ```bash
 export GITHUB_AUTH_TOKEN=your_token
-export CERT_IDENTITY="https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main"
+export CERT_IDENTITY="https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@d709edc9cc501e27f390b7818c9262075ee9e0da"
 export CERT_ISSUER=https://token.actions.githubusercontent.com
 autogov-verify -d "ghcr.io/liatrio/demo-gh-autogov-workflows@sha256:702bea33d240c2f0a1d87fe649a49b52f533bde2005b3c1bc0be7859dd5e4226"
 ```
@@ -243,6 +244,21 @@ autogov-verify \
   --artifact-digest "ghcr.io/liatrio/demo-gh-autogov-workflows@sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682" \
   --cert-identity-source "https://raw.githubusercontent.com/liatrio/liatrio-gh-autogov-workflows/main/cert-identities.json"
 ```
+
+### Certificate Identity Validation Script
+
+The repository includes a standalone `validate-cert-identity.sh` script that can be used to quickly validate certificate identities against a local `cert-identities.json` file. This is useful for testing and debugging certificate identity validation without running the full verification process.
+
+```bash
+./validate-cert-identity.sh "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@d709edc9cc501e27f390b7818c9262075ee9e0da"
+```
+
+The script:
+- Creates a local `cert-identities.json` file if one doesn't exist
+- Validates the provided certificate identity against both the latest and approved lists
+- Normalizes branch and tag references for consistent comparison
+- Checks for expired or revoked identities
+- Provides detailed output about the validation process
 
 ## Output
 
