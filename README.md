@@ -45,12 +45,14 @@ The tool performs several steps for each attestation:
 4. Validates the attestation signature
 5. Checks the certificate identity and issuer
 6. Verifies the attestation payload
+7. (Optional) Validates certificate identity against an approved source of truth list
 
 Each attestation is verified against:
 
 - GitHub's trusted root certificates
 - The specified certificate identity (GitHub Actions workflow)
 - The certificate issuer (GitHub Actions OIDC provider)
+- (Optional) An approved list of certificate identities from a source of truth
 
 ## Authentication
 
@@ -140,6 +142,53 @@ And one of the following:
 - `--expected-ref, -r`: Expected repository ref to verify against (e.g., refs/heads/main)
 - `--quiet, -q`: Only show errors and final results
 
+#### Certificate Identity Validation Flags
+
+The tool supports validating certificate identities against a source of truth list:
+
+- `--cert-identity-source`: URL to the certificate identity list for validation. If provided, validates the cert-identity against this source. Default: https://raw.githubusercontent.com/liatrio/liatrio-gh-autogov-workflows/main/cert-identities.json
+- `--no-cache`: Disable caching of the certificate identity list
+
+The certificate identity source of truth is a JSON file with the following structure:
+
+```json
+{
+  "latest": [
+    {
+      "name": "HP Attest Image v0.4.0",
+      "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@d709edc9cc501e27f390b7818c9262075ee9e0da",
+      "description": "High privilege workflow for attesting container images (latest stable release)",
+      "added": "2025-03-14",
+      "expires": "2026-03-14"
+    }
+  ],
+  "approved": [
+    {
+      "name": "HP Attest Image v0.3.0",
+      "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@13beea17d7d364f50a6e16dfef3bc53147c4677e",
+      "description": "High privilege workflow for attesting container images (previous stable release)",
+      "added": "2025-02-26",
+      "expires": "2025-08-26"
+    }
+  ],
+  "revoked": [
+    {
+      "name": "HP Attest Image v0.1.0",
+      "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@07d7909c528adbb8ba4af60592eb9c4a11654b6b",
+      "description": "Deprecated high privilege workflow for attesting container images",
+      "added": "2024-11-29",
+      "revoked": "2025-01-30",
+      "reason": "Multiple security fixes and bug fixes in later versions"
+    }
+  ],
+  "metadata": {
+    "last_updated": "2025-03-14",
+    "version": "v0.4.0",
+    "maintainer": "@liatrio/tag-autogov"
+  }
+}
+```
+
 ### Environment Variables
 
 The following environment variables can be used for authentication:
@@ -152,6 +201,8 @@ All command line flags can be set via environment variables:
 - `CERT_ISSUER`: Alternative to --cert-issuer flag
 - `EXPECTED_REF`: Alternative to --expected-ref flag
 - `QUIET`: Alternative to --quiet flag
+- `CERT_IDENTITY_SOURCE`: Alternative to --cert-identity-source flag
+- `NO_CACHE`: Alternative to --no-cache flag
 
 ## Examples
 
@@ -160,9 +211,9 @@ Verify a container image:
 ```bash
 export GITHUB_AUTH_TOKEN=your_token
 autogov-verify \
-  --cert-identity "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/feat/add-dependency-scan" \
+  --cert-identity "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@d709edc9cc501e27f390b7818c9262075ee9e0da" \
   --artifact-digest "ghcr.io/liatrio/demo-gh-autogov-workflows@sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682" \
-  --expected-ref refs/heads/feat/add-dependency-scan
+  --expected-ref refs/heads/main
 ```
 
 Verify a blob file:
@@ -170,7 +221,7 @@ Verify a blob file:
 ```bash
 export GITHUB_AUTH_TOKEN=your_token
 autogov-verify \
-  --cert-identity "https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-blob.yaml@refs/heads/main" \
+  --cert-identity "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-blob.yaml@d709edc9cc501e27f390b7818c9262075ee9e0da" \
   --blob-path path/to/your/file \
   --expected-ref refs/heads/main
 ```
@@ -179,9 +230,19 @@ Using environment variables:
 
 ```bash
 export GITHUB_AUTH_TOKEN=your_token
-export CERT_IDENTITY="https://github.com/liatrio/demo-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main"
+export CERT_IDENTITY="https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@d709edc9cc501e27f390b7818c9262075ee9e0da"
 export CERT_ISSUER=https://token.actions.githubusercontent.com
 autogov-verify -d "ghcr.io/liatrio/demo-gh-autogov-workflows@sha256:702bea33d240c2f0a1d87fe649a49b52f533bde2005b3c1bc0be7859dd5e4226"
+```
+
+Verify with certificate identity validation:
+
+```bash
+export GITHUB_AUTH_TOKEN=your_token
+autogov-verify \
+  --cert-identity "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@d709edc9cc501e27f390b7818c9262075ee9e0da" \
+  --artifact-digest "ghcr.io/liatrio/demo-gh-autogov-workflows@sha256:ee911cb4dba66546ded541337f0b3079c55b628c5d83057867b0ef458abdb682" \
+  --cert-identity-source "https://raw.githubusercontent.com/liatrio/liatrio-gh-autogov-workflows/main/cert-identities.json"
 ```
 
 ## Output
@@ -191,6 +252,10 @@ The tool provides detailed output about the verification process:
 ```shell
 Starting verification process...
 ---
+Certificate identity validation enabled
+Using identity source: https://raw.githubusercontent.com/liatrio/liatrio-gh-autogov-workflows/main/cert-identities.json
+---
+✓ Certificate identity validated against source of truth
 Verifying attestation 1 (https://in-toto.io/attestation/vulns/v0.1)...
 ✓ Attestation 1 verified successfully
 ---

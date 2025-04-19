@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/go-github/v68/github"
 	"github.com/liatrio/autogov-verify/pkg/attestations"
+	"github.com/liatrio/autogov-verify/pkg/certid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -32,6 +33,10 @@ func init() {
 	rootCmd.Flags().StringP("cert-issuer", "s", "https://token.actions.githubusercontent.com", "Certificate issuer to verify against")
 	rootCmd.Flags().StringP("expected-ref", "r", "", "Expected repository ref to verify against (e.g., refs/heads/main)")
 	rootCmd.Flags().BoolP("quiet", "q", false, "Only show errors and final results")
+
+	// certificate identity validation flags
+	rootCmd.Flags().String("cert-identity-source", "", "URL to the certificate identity list. If provided, validates cert-identity against this source. Default: https://raw.githubusercontent.com/liatrio/liatrio-gh-autogov-workflows/main/cert-identities.json")
+	rootCmd.Flags().Bool("no-cache", false, "Disable caching of the certificate identity list")
 
 	rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		blobPath := viper.GetString("blob-path")
@@ -68,6 +73,12 @@ func init() {
 	if err := viper.BindEnv("expected-ref", "EXPECTED_REF"); err != nil {
 		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
 	}
+	if err := viper.BindEnv("cert-identity-source", "CERT_IDENTITY_SOURCE"); err != nil {
+		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+	}
+	if err := viper.BindEnv("no-cache", "NO_CACHE"); err != nil {
+		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+	}
 }
 
 func run(cmd *cobra.Command, args []string) error {
@@ -77,16 +88,40 @@ func run(cmd *cobra.Command, args []string) error {
 		fmt.Println("---")
 	}
 
+	// set up certificate identity validation options if cert-identity-source is provided
+	var certIdentityOpts *certid.Options
+	if viper.GetString("cert-identity-source") != "" {
+		opts := certid.DefaultOptions()
+		opts.DisableCache = viper.GetBool("no-cache")
+
+		// Use provided URL if specified, otherwise use default
+		if viper.GetString("cert-identity-source") != "" {
+			opts.URL = viper.GetString("cert-identity-source")
+		}
+
+		certIdentityOpts = &opts
+
+		if !quiet {
+			fmt.Println("Certificate identity validation enabled")
+			fmt.Printf("Using identity source: %s\n", opts.URL)
+			if opts.DisableCache {
+				fmt.Println("Cache disabled")
+			}
+			fmt.Println("---")
+		}
+	}
+
 	sigs, err := attestations.GetFromGitHub(
 		context.Background(),
 		viper.GetString("artifact-digest"),
 		github.NewClient(nil).WithAuthToken(viper.GetString("token")),
 		attestations.Options{
-			CertIdentity: viper.GetString("cert-identity"),
-			CertIssuer:   viper.GetString("cert-issuer"),
-			BlobPath:     viper.GetString("blob-path"),
-			ExpectedRef:  viper.GetString("expected-ref"),
-			Quiet:        viper.GetBool("quiet"),
+			CertIdentity:           viper.GetString("cert-identity"),
+			CertIssuer:             viper.GetString("cert-issuer"),
+			BlobPath:               viper.GetString("blob-path"),
+			ExpectedRef:            viper.GetString("expected-ref"),
+			Quiet:                  viper.GetBool("quiet"),
+			CertIdentityValidation: certIdentityOpts,
 		},
 	)
 	if err != nil {
