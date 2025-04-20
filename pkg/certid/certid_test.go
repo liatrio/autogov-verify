@@ -25,23 +25,23 @@ func TestValidator_IsValidIdentity(t *testing.T) {
 		"latest": [
 			{
 				"name": "Test Latest",
+				"version": "1.0.0",
 				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/heads/main",
-				"description": "Test workflow for latest",
 				"added": "` + today + `"
 			}
 		],
 		"approved": [
 			{
 				"name": "Test Approved Valid",
+				"version": "0.9.0",
 				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v1.0.0",
-				"description": "Test workflow for approved and valid",
 				"added": "` + yesterday + `",
 				"expires": "` + tomorrow + `"
 			},
 			{
 				"name": "Test Approved Expired",
+				"version": "0.8.0",
 				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v0.9.0",
-				"description": "Test workflow for approved but expired",
 				"added": "` + yesterday + `",
 				"expires": "` + yesterday + `"
 			}
@@ -49,8 +49,8 @@ func TestValidator_IsValidIdentity(t *testing.T) {
 		"revoked": [
 			{
 				"name": "Test Revoked",
+				"version": "0.5.0",
 				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v0.5.0",
-				"description": "Test workflow for revoked",
 				"added": "` + yesterday + `",
 				"revoked": "` + today + `",
 				"reason": "Security vulnerability"
