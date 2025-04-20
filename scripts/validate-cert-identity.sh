@@ -11,36 +11,36 @@ if [ ! -f cert-identities.json ]; then
   "latest": [
     {
       "name": "HP Attest Image",
+      "version": "1.0.0",
       "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@refs/heads/main",
-      "description": "High privilege workflow for attesting container images",
       "added": "2024-10-22"
     },
     {
       "name": "LP Attest Blob",
+      "version": "1.0.0",
       "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-lp-attest-blob.yaml@refs/heads/main",
-      "description": "Low privilege workflow for attesting blob artifacts",
       "added": "2024-10-22"
     }
   ],
   "approved": [
     {
       "name": "LP Attest Blob main",
+      "version": "0.9.0",
       "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-lp-attest-blob.yaml@refs/heads/main",
-      "description": "Low privilege workflow for attesting blob artifacts (main branch)",
       "added": "2024-10-22",
       "expires": "2026-10-22"
     },
     {
       "name": "LP Attest Blob main (non-normalized)",
+      "version": "0.9.0",
       "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-lp-attest-blob.yaml@main",
-      "description": "Low privilege workflow for attesting blob artifacts (main branch, non-normalized)",
       "added": "2024-10-22",
       "expires": "2026-10-22"
     },
     {
       "name": "LP Attest Blob commit SHA",
+      "version": "0.8.0",
       "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-lp-attest-blob.yaml@6177b4481c00308b3839969c3eca88c96a91775f",
-      "description": "Low privilege workflow for attesting blob artifacts (pinned to commit SHA)",
       "added": "2024-10-22",
       "expires": "2026-10-22"
     }
@@ -76,11 +76,11 @@ import (
 	"time"
 )
 
-cert-id struct
+// cert-id struct
 type CertIdentity struct {
 	Name        string `json:"name"`
+	Version     string `json:"version"`
 	Identity    string `json:"identity"`
-	Description string `json:"description"`
 	Added       string `json:"added"`
 	Expires     string `json:"expires,omitempty"`
 	Revoked     string `json:"revoked,omitempty"`

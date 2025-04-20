@@ -26,13 +26,13 @@ const CacheExpirationHours = 24
 
 // represents a single certificate identity
 type Identity struct {
-	Name        string `json:"name"`
-	Identity    string `json:"identity"`
-	Description string `json:"description"`
-	Added       string `json:"added"`
-	Expires     string `json:"expires,omitempty"`
-	Revoked     string `json:"revoked,omitempty"`
-	Reason      string `json:"reason,omitempty"`
+	Name     string `json:"name"`
+	Version  string `json:"version"`
+	Identity string `json:"identity"`
+	Added    string `json:"added"`
+	Expires  string `json:"expires,omitempty"`
+	Revoked  string `json:"revoked,omitempty"`
+	Reason   string `json:"reason,omitempty"`
 }
 
 // contains categorized lists of cert-ids
