@@ -1,25 +1,3 @@
----
-
-<p align="center">
-  <a href="https://github.com/liatrio/autogov-verify/actions/workflows/build.yml?query=branch%3Amain">
-    <img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/liatrio/autogov-verify/build.yml?branch=main&style=for-the-badge">
-  </a>
-  <a href="https://goreportcard.com/report/github.com/liatrio/autogov-verify">
-    <img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/liatrio/autogov-verify?style=for-the-badge">
-  </a>
-  <a href="https://codecov.io/gh/liatrio/autogov-verify/branch/main" >
-    <img alt="Codecov Status" src="https://img.shields.io/codecov/c/github/liatrio/autogov-verify?style=for-the-badge"/>
-  </a>
-  <a href="https://github.com/liatrio/autogov-verify/releases">
-    <img alt="GitHub release" src="https://img.shields.io/github/v/release/liatrio/autogov-verify?include_prereleases&style=for-the-badge">
-  </a>
-  <a href="https://api.securityscorecards.dev/projects/github.com/liatrio/autogov-verify/badge">
-    <img alt="OpenSSF Scorecard" src="https://img.shields.io/ossf-scorecard/github.com/liatrio/autogov-verify?label=openssf%20scorecard&style=for-the-badge">
-  </a>
-</p>
-
----
-
 # GitHub Attestation Verifier
 
 A tool for verifying GitHub Artifact Attestations using [cosign](https://docs.sigstore.dev/cosign/overview/).
@@ -153,29 +131,33 @@ The certificate identity source of truth is a JSON file with the following struc
 
 ```json
 {
-  "latest": [
+  "identities": [
     {
-      "name": "HP Attest Image v0.4.0",
-      "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@d709edc9cc501e27f390b7818c9262075ee9e0da",
-      "description": "High privilege workflow for attesting container images (latest stable release)",
-      "added": "2025-03-14",
-      "expires": "2026-03-14"
-    }
-  ],
-  "approved": [
+      "version": "0.4.0",
+      "sha": "d709edc9cc501e27f390b7818c9262075ee9e0da",
+      "status": "latest",
+      "identities": [
+        "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@d709edc9cc501e27f390b7818c9262075ee9e0da"
+      ],
+      "added": "2025-03-14"
+    },
     {
-      "name": "HP Attest Image v0.3.0",
-      "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@13beea17d7d364f50a6e16dfef3bc53147c4677e",
-      "description": "High privilege workflow for attesting container images (previous stable release)",
-      "added": "2025-02-26",
-      "expires": "2025-08-26"
-    }
-  ],
-  "revoked": [
+      "version": "0.3.0",
+      "sha": "a8d9bc3a1e5601d657f87f089a234717899712b1",
+      "status": "approved",
+      "identities": [
+        "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-lp-attest-blob.yaml@a8d9bc3a1e5601d657f87f089a234717899712b1"
+      ],
+      "added": "2025-02-22",
+      "expires": "2026-02-22"
+    },
     {
-      "name": "HP Attest Image v0.1.0",
-      "identity": "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-image.yaml@07d7909c528adbb8ba4af60592eb9c4a11654b6b",
-      "description": "Deprecated high privilege workflow for attesting container images",
+      "version": "0.1.0",
+      "sha": "3f1e90cc8b4fd742c2cd3e4d81d6079c63fbaf67",
+      "status": "revoked",
+      "identities": [
+        "https://github.com/liatrio/liatrio-gh-autogov-workflows/.github/workflows/rw-hp-attest-blob.yaml@3f1e90cc8b4fd742c2cd3e4d81d6079c63fbaf67"
+      ],
       "added": "2024-11-29",
       "revoked": "2025-01-30",
       "reason": "Multiple security fixes and bug fixes in later versions"
