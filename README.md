@@ -1,25 +1,3 @@
----
-
-<p align="center">
-  <a href="https://github.com/liatrio/autogov-verify/actions/workflows/build.yml?query=branch%3Amain">
-    <img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/liatrio/autogov-verify/build.yml?branch=main&style=for-the-badge">
-  </a>
-  <a href="https://goreportcard.com/report/github.com/liatrio/autogov-verify">
-    <img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/liatrio/autogov-verify?style=for-the-badge">
-  </a>
-  <a href="https://codecov.io/gh/liatrio/autogov-verify/branch/main" >
-    <img alt="Codecov Status" src="https://img.shields.io/codecov/c/github/liatrio/autogov-verify?style=for-the-badge"/>
-  </a>
-  <a href="https://github.com/liatrio/autogov-verify/releases">
-    <img alt="GitHub release" src="https://img.shields.io/github/v/release/liatrio/autogov-verify?include_prereleases&style=for-the-badge">
-  </a>
-  <a href="https://api.securityscorecards.dev/projects/github.com/liatrio/autogov-verify/badge">
-    <img alt="OpenSSF Scorecard" src="https://img.shields.io/ossf-scorecard/github.com/liatrio/autogov-verify?label=openssf%20scorecard&style=for-the-badge">
-  </a>
-</p>
-
----
-
 # GitHub Attestation Verifier
 
 A tool for verifying GitHub Artifact Attestations using [cosign](https://docs.sigstore.dev/cosign/overview/).
