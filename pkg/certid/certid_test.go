@@ -22,35 +22,35 @@ func TestValidator_IsValidIdentity(t *testing.T) {
 	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
 
 	testData := `{
-		"latest": [
+		"identities": [
 			{
-				"name": "Test Latest",
 				"version": "1.0.0",
-				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/heads/main",
+				"sha": "abcdef1234567890",
+				"status": "latest",
+				"identities": ["https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/heads/main"],
 				"added": "` + today + `"
-			}
-		],
-		"approved": [
+			},
 			{
-				"name": "Test Approved Valid",
 				"version": "0.9.0",
-				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v1.0.0",
+				"sha": "1234567890abcdef",
+				"status": "approved",
+				"identities": ["https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v1.0.0"],
 				"added": "` + yesterday + `",
 				"expires": "` + tomorrow + `"
 			},
 			{
-				"name": "Test Approved Expired",
 				"version": "0.8.0",
-				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v0.9.0",
+				"sha": "0123456789abcdef",
+				"status": "approved",
+				"identities": ["https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v0.9.0"],
 				"added": "` + yesterday + `",
 				"expires": "` + yesterday + `"
-			}
-		],
-		"revoked": [
+			},
 			{
-				"name": "Test Revoked",
 				"version": "0.5.0",
-				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v0.5.0",
+				"sha": "fedcba9876543210",
+				"status": "revoked",
+				"identities": ["https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v0.5.0"],
 				"added": "` + yesterday + `",
 				"revoked": "` + today + `",
 				"reason": "Security vulnerability"
@@ -161,48 +161,50 @@ func TestValidator_GetValidIdentities(t *testing.T) {
 	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
 
 	testData := `{
-		"latest": [
+		"identities": [
 			{
-				"name": "Test Latest 1",
-				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test1.yaml@refs/heads/main",
-				"description": "Test workflow 1 for latest",
+				"version": "1.1.0",
+				"sha": "abcdef1234567890",
+				"status": "latest",
+				"identities": ["https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v1.1.0"],
 				"added": "` + today + `"
 			},
 			{
-				"name": "Test Latest 2",
-				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test2.yaml@refs/heads/main",
-				"description": "Test workflow 2 for latest",
+				"version": "1.0.0",
+				"sha": "1234567890abcdef",
+				"status": "latest",
+				"identities": ["https://github.com/liatrio/test-repo/.github/workflows/test2.yaml@refs/tags/v1.0.0"],
 				"added": "` + today + `"
-			}
-		],
-		"approved": [
+			},
 			{
-				"name": "Test Approved Valid 1",
-				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test1.yaml@refs/tags/v1.0.0",
-				"description": "Test workflow 1 for approved and valid",
+				"version": "0.9.1",
+				"sha": "2345678901abcdef",
+				"status": "approved",
+				"identities": ["https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v1.0.0"],
 				"added": "` + yesterday + `",
 				"expires": "` + tomorrow + `"
 			},
 			{
-				"name": "Test Approved Valid 2",
-				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test2.yaml@refs/tags/v1.0.0",
-				"description": "Test workflow 2 for approved and valid",
+				"version": "0.9.0",
+				"sha": "3456789012abcdef",
+				"status": "approved",
+				"identities": ["https://github.com/liatrio/test-repo/.github/workflows/test2.yaml@refs/tags/v0.9.0"],
 				"added": "` + yesterday + `",
 				"expires": "` + tomorrow + `"
 			},
 			{
-				"name": "Test Approved Expired",
-				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test3.yaml@refs/tags/v0.9.0",
-				"description": "Test workflow for approved but expired",
+				"version": "0.8.0",
+				"sha": "4567890123abcdef",
+				"status": "approved",
+				"identities": ["https://github.com/liatrio/test-repo/.github/workflows/test3.yaml@refs/tags/v0.9.0"],
 				"added": "` + yesterday + `",
 				"expires": "` + yesterday + `"
-			}
-		],
-		"revoked": [
+			},
 			{
-				"name": "Test Revoked",
-				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v0.5.0",
-				"description": "Test workflow for revoked",
+				"version": "0.5.0",
+				"sha": "fedcba9876543210",
+				"status": "revoked",
+				"identities": ["https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v0.5.0"],
 				"added": "` + yesterday + `",
 				"revoked": "` + today + `",
 				"reason": "Security vulnerability"
@@ -255,8 +257,11 @@ func TestValidator_GetValidIdentities(t *testing.T) {
 
 		// Check that expired identity is not included
 		for _, id := range identities {
-			if id.Identity == "https://github.com/liatrio/test-repo/.github/workflows/test3.yaml@refs/tags/v0.9.0" {
-				t.Errorf("GetValidIdentities() included expired identity: %s", id.Identity)
+			expiredID := "https://github.com/liatrio/test-repo/.github/workflows/test3.yaml@refs/tags/v0.9.0"
+			for _, ident := range id.Identities {
+				if ident == expiredID {
+					t.Errorf("GetValidIdentities() included expired identity: %s", ident)
+				}
 			}
 		}
 	})
@@ -270,16 +275,15 @@ func TestCaching(t *testing.T) {
 	// create test data
 	today := time.Now().Format("2006-01-02")
 	testData := `{
-		"latest": [],
-		"approved": [
+		"identities": [
 			{
-				"name": "Test",
-				"identity": "https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v1.0.0",
-				"description": "Test workflow",
+				"version": "1.0.0",
+				"sha": "abcdef1234567890",
+				"status": "approved",
+				"identities": ["https://github.com/liatrio/test-repo/.github/workflows/test.yaml@refs/tags/v1.0.0"],
 				"added": "` + today + `"
 			}
 		],
-		"revoked": [],
 		"metadata": {
 			"last_updated": "` + today + `",
 			"version": "1.0.0",
