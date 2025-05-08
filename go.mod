@@ -1,10 +1,13 @@
 module github.com/liatrio/autogov-verify
 
-go 1.23
+go 1.23.0
+
+toolchain go1.23.9
 
 require (
 	github.com/cli/go-gh/v2 v2.11.2
 	github.com/google/go-github/v68 v68.0.0
+	github.com/google/go-github/v71 v71.0.0
 	github.com/sigstore/cosign/v2 v2.4.1
 	github.com/sigstore/sigstore-go v0.6.2
 	github.com/spf13/cobra v1.9.1
@@ -114,7 +117,7 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/certificate-transparency-go v1.3.1 // indirect
 	github.com/google/gnostic-models v0.6.9-0.20230804172637-c7be7c783f49 // indirect
-	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-containerregistry v0.20.2 // indirect
 	github.com/google/go-github/v55 v55.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
