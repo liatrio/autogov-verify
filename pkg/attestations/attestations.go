@@ -417,13 +417,14 @@ func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPat
 
 	// get the payload from the envelope
 	rawPayload := envelope.RawEnvelope().Payload
-	if err := json.Unmarshal([]byte(rawPayload), &statement); err != nil {
+	payloadBytes := []byte(rawPayload)
+	if err := json.Unmarshal(payloadBytes, &statement); err != nil {
 		return nil, fmt.Errorf("failed to parse statement: %w", err)
 	}
 
 	// create signature from attestation
 	sig, err := static.NewSignature(
-		[]byte(rawPayload),
+		payloadBytes,
 		string(envelope.Signature()),
 	)
 	if err != nil {
