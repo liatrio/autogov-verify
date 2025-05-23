@@ -9,7 +9,7 @@ require (
 	github.com/sigstore/sigstore-go v1.0.0
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
-	oras.land/oras-go/v2 v2.5.0
+	oras.land/oras-go/v2 v2.6.0
 )
 
 require (
@@ -150,7 +150,7 @@ require (
 	github.com/oleiade/reflections v1.1.0 // indirect
 	github.com/open-policy-agent/opa v1.1.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/opencontainers/image-spec v1.1.0 // indirect
+	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
