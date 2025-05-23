@@ -2,8 +2,6 @@ module github.com/liatrio/autogov-verify
 
 go 1.23.4
 
-toolchain go1.24.2
-
 require (
 	github.com/cli/go-gh/v2 v2.11.2
 	github.com/google/go-github/v68 v68.0.0
