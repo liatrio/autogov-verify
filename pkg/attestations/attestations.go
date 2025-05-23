@@ -395,6 +395,12 @@ func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPat
 		return nil, fmt.Errorf("failed to unmarshal bundle: %w", err)
 	}
 
+	// get the envelope from the bundle
+	envelope, err := b.Envelope()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get envelope from bundle: %w", err)
+	}
+
 	// set predicate type
 	var statement struct {
 		PredicateType string `json:"predicateType"`
@@ -408,14 +414,17 @@ func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPat
 			} `json:"buildDefinition"`
 		} `json:"predicate"`
 	}
-	if err := json.Unmarshal(b.GetDsseEnvelope().Payload, &statement); err != nil {
+
+	// get the payload from the envelope
+	rawPayload := envelope.RawEnvelope().Payload
+	if err := json.Unmarshal([]byte(rawPayload), &statement); err != nil {
 		return nil, fmt.Errorf("failed to parse statement: %w", err)
 	}
 
 	// create signature from attestation
 	sig, err := static.NewSignature(
-		b.GetDsseEnvelope().Payload,
-		string(b.GetDsseEnvelope().Signatures[0].Sig),
+		[]byte(rawPayload),
+		string(envelope.Signature()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create signature: %w", err)
@@ -448,7 +457,8 @@ func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPat
 	verifyCmd := verify.VerifyBlobAttestationCommand{
 		KeyOpts: options.KeyOpts{
 			BundlePath: bundlePath,
-			// Note: NewBundleFormat is always set to true as gh only supports the new bundle format
+			// Note: GitHub only supports the new bundle format (now called NewBundle in sigstore-go v1.0.0)
+			// This is the Sigstore bundle format used by GitHub Artifact Attestations, npm Provenance, and Homebrew Provenance
 			NewBundleFormat: true,
 		},
 		CertVerifyOptions: options.CertVerifyOptions{
