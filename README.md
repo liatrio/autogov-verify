@@ -11,7 +11,7 @@ A tool for verifying GitHub Artifact Attestations using [cosign](https://docs.si
 - Access to the GitHub Container Registry (ghcr.io)
 - Docker login to ghcr.io (`docker login ghcr.io`) for container image verification
 
-This tool verifies GitHub Artifact Attestations using cosign. It supports the verification of attestations in the [`NewBundleFormat`](https://github.com/sigstore/sigstore-go/blob/v0.6.2/pkg/bundle/bundle.go#L59) (e.g., [GitHub Artifact Attestations, npm Provenance, HomebrewProvenance, etc](https://blog.sigstore.dev/cosign-verify-bundles/)).
+This tool verifies GitHub Artifact Attestations using cosign. It supports the verification of attestations in the Sigstore bundle format (now called `NewBundle` in sigstore-go v1.0.0) used by [GitHub Artifact Attestations, npm Provenance, Homebrew Provenance, etc](https://blog.sigstore.dev/cosign-verify-bundles/).
 
 ## Verification Process
 
