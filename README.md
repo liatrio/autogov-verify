@@ -1,5 +1,6 @@
 # GitHub Attestation Verifier
 
+
 A tool for verifying GitHub Artifact Attestations using [cosign](https://docs.sigstore.dev/cosign/overview/).
 
 > **Note**: This tool supports attestations for container images in the GitHub Container Registry (ghcr.io) and blob attestations.
