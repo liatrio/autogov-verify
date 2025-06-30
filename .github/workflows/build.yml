@@ -8,8 +8,6 @@ on:
       - README.md
       - catalog-info.yaml
       - renovate.json
-    tags:
-      - v*
 
 env:
   GITHUB_TOKEN: ${{ secrets.UTIL_REPO_ACCESS }}
