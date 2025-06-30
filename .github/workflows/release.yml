@@ -2,8 +2,6 @@ name: Release
 
 on:
   push:
-    tags:
-      - v*
     branches: [main]
 
 jobs:
@@ -36,4 +34,11 @@ jobs:
           github-token: ${{ github.token }}
           changelog-generator-opt: emojis=true
           allow-initial-development-versions: true
-          assets: bin/autogov-verify
+      - name: Upload Results/Sigstore Bundle as Release Asset
+        if: steps.go-semantic-release.outputs.version != ''
+        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
+        with:
+          files: |
+            bin/autogov-verify
+          tag_name: v${{ steps.go-semantic-release.outputs.version }}
+          token: ${{ github.token }}
