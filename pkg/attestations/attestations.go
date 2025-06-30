@@ -3,7 +3,6 @@ package attestations
 import (
 	"context"
 	_ "embed"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
