@@ -3,6 +3,7 @@ package attestations
 import (
 	"context"
 	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -417,7 +418,11 @@ func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPat
 
 	// get the payload from the envelope
 	rawPayload := envelope.RawEnvelope().Payload
-	payloadBytes := []byte(rawPayload)
+	// decode base64 payload
+	payloadBytes, err := base64.StdEncoding.DecodeString(rawPayload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode payload: %w", err)
+	}
 	if err := json.Unmarshal(payloadBytes, &statement); err != nil {
 		return nil, fmt.Errorf("failed to parse statement: %w", err)
 	}
