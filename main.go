@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -141,10 +142,17 @@ func run(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
+		// decode base64 payload
+		decodedPayload, err := base64.StdEncoding.DecodeString(string(payload))
+		if err != nil {
+			log.Printf("Warning: failed to decode payload for attestation %d: %v", i, err)
+			continue
+		}
+
 		var statement struct {
 			PredicateType string `json:"predicateType"`
 		}
-		if err := json.Unmarshal(payload, &statement); err != nil {
+		if err := json.Unmarshal(decodedPayload, &statement); err != nil {
 			log.Printf("Warning: failed to parse statement for attestation %d: %v", i, err)
 			continue
 		}
