@@ -31,15 +31,12 @@ func FetchTrustedRoot() ([]byte, error) {
 			continue
 		}
 
+		// check if trusted root contains fulcio.githubapp.com certificate authority
 		if cas, ok := trustedRoot["certificateAuthorities"].([]interface{}); ok {
 			for _, ca := range cas {
 				if caMap, ok := ca.(map[string]interface{}); ok {
 					if uri, ok := caMap["uri"].(string); ok && uri == "fulcio.githubapp.com" {
-						filteredRoot := map[string]interface{}{
-							"mediaType":              trustedRoot["mediaType"],
-							"certificateAuthorities": []interface{}{ca},
-						}
-						return json.MarshalIndent(filteredRoot, "", "  ")
+						return json.MarshalIndent(trustedRoot, "", "  ")
 					}
 				}
 			}
@@ -47,4 +44,20 @@ func FetchTrustedRoot() ([]byte, error) {
 	}
 
 	return nil, fmt.Errorf("no trusted root found for fulcio.githubapp.com")
+}
+
+// returns the GitHub trusted root with fallback mechanism.
+// first attempts to fetch the latest root dynamically, and falls back
+// to the embedded root if the dynamic fetch fails.
+func GetTrustedRoot() ([]byte, error) {
+	// Try to fetch dynamically first
+	trustedRoot, err := FetchTrustedRoot()
+	if err == nil {
+		fmt.Println("✓ Using dynamically fetched trusted root")
+		return trustedRoot, nil
+	}
+
+	// fallback to the embedded root if fetching fails
+	fmt.Printf("! Failed to fetch dynamic trusted root (%v), falling back to embedded version\n", err)
+	return GithubTrustedRoot, nil
 }
