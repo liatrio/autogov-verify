@@ -11,26 +11,27 @@ A tool for verifying GitHub Artifact Attestations using [cosign](https://docs.si
 - Access to the GitHub Container Registry (ghcr.io)
 - Docker login to ghcr.io (`docker login ghcr.io`) for container image verification
 
-This tool verifies GitHub Artifact Attestations using cosign. It supports the verification of attestations in the Sigstore bundle format (now called `NewBundle` in sigstore-go v1.0.0) used by [GitHub Artifact Attestations, npm Provenance, Homebrew Provenance, etc](https://blog.sigstore.dev/cosign-verify-bundles/).
+This tool verifies GitHub Artifact Attestations using the sigstore-go v1.0.0 API. It supports the verification of attestations in the Sigstore bundle format used by [GitHub Artifact Attestations, npm Provenance, Homebrew Provenance, etc](https://blog.sigstore.dev/cosign-verify-bundles/).
 
 ## Verification Process
 
 The tool performs several steps for each attestation:
 
-1. Parses the OCI reference to extract organization, repository, and digest
-2. Retrieves attestations from GitHub's container registry
-3. Verifies the certificate chain for each attestation
-4. Validates the attestation signature
-5. Checks the certificate identity and issuer
-6. Verifies the attestation payload
-7. (Optional) Validates certificate identity against an approved source of truth list
+1. **Trusted Root Fetching**: Dynamically fetches GitHub's trusted root using `gh attestation trusted-root`, with fallback to embedded trusted root
+2. **Parses the OCI reference** to extract organization, repository, and digest
+3. **Retrieves attestations** from GitHub's container registry
+4. **Verifies the certificate chain** for each attestation using sigstore-go v1.0.0 API
+5. **Validates the attestation signature** with proper timestamp verification
+6. **Checks the certificate identity and issuer** against expected values
+7. **Verifies the attestation payload** structure and content
+8. **(Optional) Validates certificate identity** against an approved source of truth list
 
 Each attestation is verified against:
 
-- GitHub's trusted root certificates
-- The specified certificate identity (GitHub Actions workflow)
-- The certificate issuer (GitHub Actions OIDC provider)
-- (Optional) An approved list of certificate identities from a source of truth
+- **GitHub's trusted root certificates** (including both certificate authorities and timestamp authorities)
+- **The specified certificate identity** (GitHub Actions workflow)
+- **The certificate issuer** (GitHub Actions OIDC provider)
+- **(Optional) An approved list** of certificate identities from a source of truth
 
 ## Authentication
 
@@ -251,6 +252,42 @@ Attestation Types:
 2. https://cyclonedx.org/bom
 3. https://slsa.dev/provenance/v1
 4. https://cosign.sigstore.dev/attestation/v1
+```
+
+## Trusted Root Management
+
+The tool uses GitHub's trusted root certificates for verification, which include both certificate authorities and timestamp authorities required for proper sigstore verification.
+
+### Dynamic Trusted Root Fetching
+
+By default, the tool attempts to fetch the latest trusted root dynamically:
+
+1. **Primary Method**: Uses `gh attestation trusted-root` command to fetch the current trusted root
+2. **Fallback Method**: Uses embedded trusted root if dynamic fetching fails
+3. **Filtering**: Automatically filters for `fulcio.githubapp.com` certificate authority while preserving timestamp authorities
+
+### Benefits of Dynamic Fetching
+
+- **Always Up-to-Date**: Gets the latest trusted root certificates from GitHub
+- **Automatic Updates**: No need to update the tool when GitHub rotates certificates
+- **Robust Fallback**: Falls back to embedded root if GitHub CLI is unavailable
+
+### Requirements for Dynamic Fetching
+
+- GitHub CLI (`gh`) must be installed and authenticated
+- Network access to GitHub's API
+- Valid GitHub authentication token
+
+If dynamic fetching fails, you'll see a message indicating fallback to embedded trusted root:
+
+```text
+✓ Using dynamically fetched trusted root
+```
+
+or
+
+```text
+⚠ Failed to fetch dynamic trusted root, using embedded fallback
 ```
 
 ## Troubleshooting
