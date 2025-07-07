@@ -1,9 +1,12 @@
 package attestations
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	_ "embed"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,17 +16,16 @@ import (
 	"strings"
 	"time"
 
-	"crypto/sha256"
-
 	"github.com/google/go-github/v68/github"
 	"github.com/liatrio/autogov-verify/pkg/certid"
 	"github.com/liatrio/autogov-verify/pkg/root"
 	"github.com/liatrio/autogov-verify/pkg/storage"
-	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
-	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
+
 	"github.com/sigstore/cosign/v2/pkg/oci"
 	"github.com/sigstore/cosign/v2/pkg/oci/static"
-	sigstore "github.com/sigstore/sigstore-go/pkg/bundle"
+	"github.com/sigstore/sigstore-go/pkg/bundle"
+	sigstorego_root "github.com/sigstore/sigstore-go/pkg/root"
+	"github.com/sigstore/sigstore-go/pkg/verify"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/retry"
@@ -210,9 +212,15 @@ func GetFromGitHub(ctx context.Context, imageRef string, client *github.Client, 
 		return handleBlobVerification(ctx, artifactRef, org, client, opts, cacheDir)
 	}
 
+	// get trusted root with fallback
+	trustedRootData, err := root.GetTrustedRoot()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get trusted root: %w", err)
+	}
+
 	// write trusted root
 	trust := filepath.Join(cacheDir, "github-trusted-root.json")
-	if err := os.WriteFile(trust, root.GithubTrustedRoot, 0644); err != nil {
+	if err := os.WriteFile(trust, trustedRootData, 0644); err != nil {
 		return nil, fmt.Errorf("failed to write trusted root: %w", err)
 	}
 
@@ -286,7 +294,7 @@ func GetFromGitHub(ctx context.Context, imageRef string, client *github.Client, 
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		default:
-			sig, err := verifyAttestation(ctx, att, manifestPath, trust, cacheDir, i, opts)
+			sig, err := verifyAttestation(ctx, att, artifactRef.String(), trust, cacheDir, i, opts)
 			if err != nil {
 				return nil, err
 			}
@@ -374,7 +382,7 @@ func getManifestWithOras(ctx context.Context, org, repository, artifactRef strin
 	return io.ReadAll(manifestReader)
 }
 
-func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPath, trust, cacheDir string, index int, opts Options) (oci.Signature, error) {
+func verifyAttestation(ctx context.Context, att *github.Attestation, artifactDigest, trust, cacheDir string, index int, opts Options) (oci.Signature, error) {
 	if att == nil {
 		return nil, fmt.Errorf("attestation is nil")
 	}
@@ -385,13 +393,8 @@ func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPat
 		return nil, fmt.Errorf("failed to marshal attestation bundle: %w", err)
 	}
 
-	bundlePath := filepath.Join(cacheDir, fmt.Sprintf("att_%d.json", index))
-	if err := os.WriteFile(bundlePath, bundleData, 0644); err != nil {
-		return nil, fmt.Errorf("failed to write attestation bundle: %w", err)
-	}
-
-	// parse bundle for statement first to get predicate type
-	b := sigstore.Bundle{}
+	// parse bundle using sigstore-go v1.0.0 API
+	b := &bundle.Bundle{}
 	if err := b.UnmarshalJSON(bundleData); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal bundle: %w", err)
 	}
@@ -400,6 +403,15 @@ func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPat
 	envelope, err := b.Envelope()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get envelope from bundle: %w", err)
+	}
+
+	// get the payload from the envelope
+	rawPayload := envelope.RawEnvelope().Payload
+
+	// decode base64 payload
+	decodedPayload, err := base64.StdEncoding.DecodeString(rawPayload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode base64 payload: %w", err)
 	}
 
 	// set predicate type
@@ -416,15 +428,6 @@ func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPat
 		} `json:"predicate"`
 	}
 
-	// get the payload from the envelope
-	rawPayload := envelope.RawEnvelope().Payload
-	
-	// decode base64 payload
-	decodedPayload, err := base64.StdEncoding.DecodeString(rawPayload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode base64 payload: %w", err)
-	}
-	
 	if err := json.Unmarshal(decodedPayload, &statement); err != nil {
 		return nil, fmt.Errorf("failed to parse statement: %w", err)
 	}
@@ -461,38 +464,54 @@ func verifyAttestation(ctx context.Context, att *github.Attestation, manifestPat
 		}
 	}
 
-	// cosign verify config
-	verifyCmd := verify.VerifyBlobAttestationCommand{
-		KeyOpts: options.KeyOpts{
-			BundlePath: bundlePath,
-			// Note: GitHub only supports the new bundle format (now called NewBundle in sigstore-go v1.0.0)
-			// This is the Sigstore bundle format used by GitHub Artifact Attestations, npm Provenance, and Homebrew Provenance
-			NewBundleFormat: true,
-		},
-		CertVerifyOptions: options.CertVerifyOptions{
-			CertOidcIssuer: opts.CertIssuer,
-			CertIdentity:   opts.CertIdentity,
-		},
-		// Note: IgnoreSCT and UseSignedTimestamps are set to true because GitHub uses signed timestamps instead of SCTs
-		IgnoreSCT:           true,
-		UseSignedTimestamps: true,
-		TrustedRootPath:     trust,
-		// Note: IgnoreTlog is set to true because GitHub does not use CT logs
-		IgnoreTlog: true,
-	}
-
 	if !opts.Quiet {
 		fmt.Printf("Verifying attestation %d (%s)...\n", index+1, statement.PredicateType)
 	}
 
-	// use blob path if provided, otherwise use manifest
-	targetPath := manifestPath
-	if opts.BlobPath != "" {
-		targetPath = opts.BlobPath
+	// load trusted root
+	trustedRoot, err := sigstorego_root.NewTrustedRootFromPath(trust)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load trusted root: %w", err)
 	}
 
-	// verify attestation
-	if err := verifyCmd.Exec(ctx, targetPath); err != nil {
+	// create verifier with trusted material and timestamp verification
+	verifier, err := verify.NewVerifier(trustedRoot, verify.WithObserverTimestamps(1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create verifier: %w", err)
+	}
+
+	// create artifact policy - for container images we verify against the digest
+	var artifactPolicy verify.ArtifactPolicyOption
+	if opts.BlobPath != "" {
+		// for blobs, read the blob content and verify against it
+		blobData, err := os.ReadFile(opts.BlobPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read blob: %w", err)
+		}
+		artifactPolicy = verify.WithArtifact(bytes.NewReader(blobData))
+	} else {
+		// for container images, verify against the digest
+		// Remove "sha256:" prefix if present
+		digestValue := strings.TrimPrefix(artifactDigest, "sha256:")
+		digestBytes, err := hex.DecodeString(digestValue)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode digest: %w", err)
+		}
+		artifactPolicy = verify.WithArtifactDigest("sha256", digestBytes)
+	}
+
+	// create certificate identity for verification
+	certIdentity, err := verify.NewShortCertificateIdentity(opts.CertIssuer, "", opts.CertIdentity, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create certificate identity: %w", err)
+	}
+
+	// create policy using the pure sigstore-go v1.0.0 API with certificate identity verification
+	policy := verify.NewPolicy(artifactPolicy, verify.WithCertificateIdentity(certIdentity))
+
+	// verify the bundle using the pure sigstore-go v1.0.0 API
+	_, err = verifier.Verify(b, policy)
+	if err != nil {
 		return nil, fmt.Errorf("failed to verify attestation: %w", err)
 	}
 
@@ -530,9 +549,15 @@ func handleBlobVerification(ctx context.Context, artifactRef *Digest, org string
 		fmt.Printf("Using calculated blob digest: %s\n", artifactRef)
 	}
 
+	// get trusted root with fallback
+	trustedRootData, err := root.GetTrustedRoot()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get trusted root: %w", err)
+	}
+
 	// write trusted root
 	trust := filepath.Join(cacheDir, "github-trusted-root.json")
-	if err := os.WriteFile(trust, root.GithubTrustedRoot, 0644); err != nil {
+	if err := os.WriteFile(trust, trustedRootData, 0644); err != nil {
 		return nil, fmt.Errorf("failed to write trusted root: %w", err)
 	}
 

@@ -35,11 +35,17 @@ var (
 )
 
 // demonstrates how to use the GetFromGitHub function
+// This function uses the sigstore-go v1.0.0 API for attestation verification
+// and automatically fetches GitHub's trusted root with fallback to embedded root
 func ExampleGetFromGitHub() {
 	// Create a mock client with a token
 	client := github.NewClient(nil).WithAuthToken("mock-token")
 
 	// Example 1: Verify a container image
+	// The tool will automatically:
+	// 1. Try to fetch GitHub's trusted root dynamically using 'gh attestation trusted-root'
+	// 2. Fall back to embedded trusted root if dynamic fetch fails
+	// 3. Use sigstore-go v1.0.0 API for verification with proper timestamp validation
 	imageRef := "myorg/my-container-repo@sha256:1234567890123456789012345678901234567890123456789012345678901234"
 	opts := Options{
 		CertIdentity: "https://github.com/myorg/myrepo/.github/workflows/verify.yml@refs/heads/main",
@@ -51,6 +57,7 @@ func ExampleGetFromGitHub() {
 	fmt.Printf("Container verification error: %v\n", err)
 
 	// Example 2: Verify a blob
+	// Blob verification also uses the same trusted root fetching logic
 	blobOpts := Options{
 		BlobPath:     "testdata/example.txt",
 		CertIdentity: "https://github.com/myorg/myrepo/.github/workflows/verify.yml@refs/heads/main",

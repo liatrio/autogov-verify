@@ -182,90 +182,98 @@ func (v *Validator) IsValidIdentity(certIdentity string) (bool, error) {
 		return false, fmt.Errorf("identity list not loaded, call LoadIdentities first")
 	}
 
-	// extract sha from certIdentity for use with flattened format
+	normalizedIdentity, certSHA := normalizeIdentity(certIdentity)
+
+	for _, id := range v.list.Identities {
+		if err := checkIfRevoked(id, certIdentity, normalizedIdentity, certSHA); err != nil {
+			return false, err
+		}
+
+		valid, err := checkIfValid(id, certIdentity, normalizedIdentity, certSHA)
+		if err != nil {
+			return false, err
+		}
+		if valid {
+			return true, nil
+		}
+	}
+	return false, fmt.Errorf("certificate identity not found in approved lists")
+}
+
+// normalizes the cert identity and extracts the sha if present
+func normalizeIdentity(certIdentity string) (string, string) {
 	certSHA := ""
 	normalizedIdentity := certIdentity
 	if strings.Contains(certIdentity, "@") {
 		parts := strings.Split(certIdentity, "@")
 		if len(parts) == 2 {
-			// if it's a 40-char hex string, it's likely a SHA
 			if len(parts[1]) == 40 && isHexString(parts[1]) {
 				certSHA = parts[1]
 			}
-
-			// normalize reference paths
-			if !strings.Contains(certIdentity, "@refs/") {
-				// only normalize if not already a SHA reference
-				if certSHA == "" {
-					if strings.HasPrefix(parts[1], "heads/") {
-						normalizedIdentity = parts[0] + "@refs/" + parts[1]
-					} else if strings.HasPrefix(parts[1], "tags/") {
-						normalizedIdentity = parts[0] + "@refs/" + parts[1]
-					} else if !strings.HasPrefix(parts[1], "refs/") {
-						normalizedIdentity = parts[0] + "@refs/heads/" + parts[1]
-					}
+			if !strings.Contains(certIdentity, "@refs/") && certSHA == "" {
+				if strings.HasPrefix(parts[1], "heads/") {
+					normalizedIdentity = parts[0] + "@refs/" + parts[1]
+				} else if strings.HasPrefix(parts[1], "tags/") {
+					normalizedIdentity = parts[0] + "@refs/" + parts[1]
+				} else if !strings.HasPrefix(parts[1], "refs/") {
+					normalizedIdentity = parts[0] + "@refs/heads/" + parts[1]
 				}
 			}
 		}
 	}
 
-	// check identities list
-	for _, id := range v.list.Identities {
-		// check if this identity is revoked
-		if id.Status == "revoked" {
-			// check exact identity match first
-			for _, identity := range id.Identities {
-				if identity == certIdentity || identity == normalizedIdentity {
-					return false, fmt.Errorf("certificate identity is revoked: %s", id.Reason)
-				}
-			}
+	return normalizedIdentity, certSHA
+}
 
-			// check SHA match if we have it
-			if certSHA != "" && id.Sha == certSHA {
-				return false, fmt.Errorf("certificate identity is revoked: %s", id.Reason)
-			}
-		}
+// checks if an identity is revoked
+func checkIfRevoked(id Identity, certIdentity, normalizedIdentity, certSHA string) error {
+	if id.Status != "revoked" {
+		return nil
+	}
 
-		// check valid identities (latest or approved)
-		if id.Status == "latest" || id.Status == "approved" {
-			// first check direct identity match
-			for _, identity := range id.Identities {
-				if identity == certIdentity || identity == normalizedIdentity {
-					// check expiry for approved identities
-					if id.Expires != "" {
-						expiryDate, err := time.Parse("2006-01-02", id.Expires)
-						if err != nil {
-							return false, fmt.Errorf("invalid expiry date format: %w", err)
-						}
-						// add a day to consider it valid throughout the expiry date itself
-						expiryDate = expiryDate.AddDate(0, 0, 1)
-						if time.Now().After(expiryDate) {
-							return false, fmt.Errorf("certificate identity has expired")
-						}
-					}
-					return true, nil
-				}
-			}
-
-			// check SHA match if we have it
-			if certSHA != "" && id.Sha == certSHA {
-				if id.Expires != "" {
-					expiryDate, err := time.Parse("2006-01-02", id.Expires)
-					if err != nil {
-						return false, fmt.Errorf("invalid expiry date format: %w", err)
-					}
-					expiryDate = expiryDate.AddDate(0, 0, 1)
-					if time.Now().After(expiryDate) {
-						return false, fmt.Errorf("certificate identity has expired")
-					}
-				}
-				return true, nil
-			}
+	for _, identity := range id.Identities {
+		if identity == certIdentity || identity == normalizedIdentity {
+			return fmt.Errorf("certificate identity is revoked: %s", id.Reason)
 		}
 	}
 
-	// certificate identity not found
-	return false, fmt.Errorf("certificate identity not found in approved lists")
+	if certSHA != "" && id.Sha == certSHA {
+		return fmt.Errorf("certificate identity is revoked: %s", id.Reason)
+	}
+
+	return nil
+}
+
+// checks if an identity is valid and not expired
+func checkIfValid(id Identity, certIdentity, normalizedIdentity, certSHA string) (bool, error) {
+	if id.Status != "latest" && id.Status != "approved" {
+		return false, nil
+	}
+
+	identityMatch := false
+	for _, identity := range id.Identities {
+		if identity == certIdentity || identity == normalizedIdentity {
+			identityMatch = true
+			break
+		}
+	}
+
+	if !identityMatch && (certSHA == "" || id.Sha != certSHA) {
+		return false, nil
+	}
+
+	if id.Expires != "" {
+		expiryDate, err := time.Parse("2006-01-02", id.Expires)
+		if err != nil {
+			return false, fmt.Errorf("invalid expiry date format: %w", err)
+		}
+		expiryDate = expiryDate.AddDate(0, 0, 1)
+		if time.Now().After(expiryDate) {
+			return false, fmt.Errorf("certificate identity has expired")
+		}
+	}
+
+	return true, nil
 }
 
 // helper function checks if a string is a valid hex string (for sha validation)

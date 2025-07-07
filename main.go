@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 
-	"github.com/google/go-github/v68/github"
 	"github.com/liatrio/autogov-verify/pkg/attestations"
 	"github.com/liatrio/autogov-verify/pkg/certid"
+	"github.com/liatrio/autogov-verify/pkg/github"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -25,28 +26,39 @@ certificate identity and issuer.`,
 	}
 )
 
+const (
+	flagArtifactDigest     = "artifact-digest"
+	flagBlobPath           = "blob-path"
+	flagCertIdentity       = "cert-identity"
+	flagCertIssuer         = "cert-issuer"
+	flagExpectedRef        = "expected-ref"
+	flagQuiet              = "quiet"
+	flagCertIdentitySource = "cert-identity-source"
+	flagNoCache            = "no-cache"
+)
+
 func init() {
 	// flags
-	rootCmd.Flags().StringP("artifact-digest", "d", "", "Full OCI reference in the format [registry/]org/repo[:tag]@digest")
-	rootCmd.Flags().String("blob-path", "", "Path to a blob file to verify attestations against")
-	rootCmd.Flags().StringP("cert-identity", "i", "", "Certificate identity to verify against (required)")
-	rootCmd.Flags().StringP("cert-issuer", "s", "https://token.actions.githubusercontent.com", "Certificate issuer to verify against")
-	rootCmd.Flags().StringP("expected-ref", "r", "", "Expected repository ref to verify against (e.g., refs/heads/main)")
-	rootCmd.Flags().BoolP("quiet", "q", false, "Only show errors and final results")
+	rootCmd.Flags().StringP(flagArtifactDigest, "d", "", "Full OCI reference in the format [registry/]org/repo[:tag]@digest")
+	rootCmd.Flags().String(flagBlobPath, "", "Path to a blob file to verify attestations against")
+	rootCmd.Flags().StringP(flagCertIdentity, "i", "", "Certificate identity to verify against (required)")
+	rootCmd.Flags().StringP(flagCertIssuer, "s", "https://token.actions.githubusercontent.com", "Certificate issuer to verify against")
+	rootCmd.Flags().StringP(flagExpectedRef, "r", "", "Expected repository ref to verify against (e.g., refs/heads/main)")
+	rootCmd.Flags().BoolP(flagQuiet, "q", false, "Only show errors and final results")
 
 	// certificate identity validation flags
-	rootCmd.Flags().String("cert-identity-source", "", "URL to the certificate identity list. If provided, validates cert-identity against this source. Default: https://raw.githubusercontent.com/liatrio/liatrio-gh-autogov-workflows/main/cert-identities.json")
-	rootCmd.Flags().Bool("no-cache", false, "Disable caching of the certificate identity list")
+	rootCmd.Flags().String(flagCertIdentitySource, "", fmt.Sprintf("URL to the certificate identity list. If provided, validates cert-identity against this source. Default: %s", certid.DefaultIdentityListURL))
+	rootCmd.Flags().Bool(flagNoCache, false, "Disable caching of the certificate identity list")
 
 	rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		blobPath := viper.GetString("blob-path")
-		artifactDigest := viper.GetString("artifact-digest")
+		blobPath := viper.GetString(flagBlobPath)
+		artifactDigest := viper.GetString(flagArtifactDigest)
 		if blobPath == "" && artifactDigest == "" {
-			return fmt.Errorf("either --artifact-digest or --blob-path must be provided")
+			return fmt.Errorf("either --%s or --%s must be provided", flagArtifactDigest, flagBlobPath)
 		}
 
-		token := viper.GetString("token")
-		if token == "" {
+		// token validation is handled by github.GetToken() and github.NewClient()
+		if github.GetToken() == "" {
 			return fmt.Errorf("GH_TOKEN, GITHUB_TOKEN or GITHUB_AUTH_TOKEN environment variable is required")
 		}
 
@@ -58,31 +70,24 @@ func init() {
 	}
 
 	// bind env vars
-	if err := viper.BindEnv("token", "GH_TOKEN", "GITHUB_TOKEN", "GITHUB_AUTH_TOKEN"); err != nil {
-		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+	envBinds := map[string]string{
+		flagCertIdentity:       "CERT_IDENTITY",
+		flagCertIssuer:         "CERT_ISSUER",
+		flagQuiet:              "QUIET",
+		flagExpectedRef:        "EXPECTED_REF",
+		flagCertIdentitySource: "CERT_IDENTITY_SOURCE",
+		flagNoCache:            "NO_CACHE",
 	}
-	if err := viper.BindEnv("cert-identity", "CERT_IDENTITY"); err != nil {
-		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
-	}
-	if err := viper.BindEnv("cert-issuer", "CERT_ISSUER"); err != nil {
-		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
-	}
-	if err := viper.BindEnv("quiet", "QUIET"); err != nil {
-		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
-	}
-	if err := viper.BindEnv("expected-ref", "EXPECTED_REF"); err != nil {
-		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
-	}
-	if err := viper.BindEnv("cert-identity-source", "CERT_IDENTITY_SOURCE"); err != nil {
-		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
-	}
-	if err := viper.BindEnv("no-cache", "NO_CACHE"); err != nil {
-		panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+
+	for key, env := range envBinds {
+		if err := viper.BindEnv(key, env); err != nil {
+			panic(fmt.Sprintf("failed to bind environment variables: %v", err))
+		}
 	}
 }
 
 func run(cmd *cobra.Command, args []string) error {
-	quiet := viper.GetBool("quiet")
+	quiet := viper.GetBool(flagQuiet)
 	if !quiet {
 		fmt.Println("Starting verification process...")
 		fmt.Println("---")
@@ -90,13 +95,13 @@ func run(cmd *cobra.Command, args []string) error {
 
 	// set up certificate identity validation options if cert-identity-source is provided
 	var certIdentityOpts *certid.Options
-	if viper.GetString("cert-identity-source") != "" {
+	if viper.GetString(flagCertIdentitySource) != "" {
 		opts := certid.DefaultOptions()
-		opts.DisableCache = viper.GetBool("no-cache")
+		opts.DisableCache = viper.GetBool(flagNoCache)
 
 		// Use provided URL if specified, otherwise use default
-		if viper.GetString("cert-identity-source") != "" {
-			opts.URL = viper.GetString("cert-identity-source")
+		if viper.GetString(flagCertIdentitySource) != "" {
+			opts.URL = viper.GetString(flagCertIdentitySource)
 		}
 
 		certIdentityOpts = &opts
@@ -113,14 +118,14 @@ func run(cmd *cobra.Command, args []string) error {
 
 	sigs, err := attestations.GetFromGitHub(
 		context.Background(),
-		viper.GetString("artifact-digest"),
-		github.NewClient(nil).WithAuthToken(viper.GetString("token")),
+		viper.GetString(flagArtifactDigest),
+		github.NewClient(),
 		attestations.Options{
-			CertIdentity:           viper.GetString("cert-identity"),
-			CertIssuer:             viper.GetString("cert-issuer"),
-			BlobPath:               viper.GetString("blob-path"),
-			ExpectedRef:            viper.GetString("expected-ref"),
-			Quiet:                  viper.GetBool("quiet"),
+			CertIdentity:           viper.GetString(flagCertIdentity),
+			CertIssuer:             viper.GetString(flagCertIssuer),
+			BlobPath:               viper.GetString(flagBlobPath),
+			ExpectedRef:            viper.GetString(flagExpectedRef),
+			Quiet:                  viper.GetBool(flagQuiet),
 			CertIdentityValidation: certIdentityOpts,
 		},
 	)
@@ -128,7 +133,7 @@ func run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error getting attestations: %w", err)
 	}
 
-	if !viper.GetBool("quiet") {
+	if !viper.GetBool(flagQuiet) {
 		fmt.Println("\nSummary:")
 		fmt.Printf("✓ Successfully verified %d attestations\n", len(sigs))
 		fmt.Println("\nAttestation Types:")
@@ -141,10 +146,17 @@ func run(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
+		// decode base64 payload
+		decodedPayload, err := base64.StdEncoding.DecodeString(string(payload))
+		if err != nil {
+			log.Printf("Warning: failed to decode payload for attestation %d: %v", i, err)
+			continue
+		}
+
 		var statement struct {
 			PredicateType string `json:"predicateType"`
 		}
-		if err := json.Unmarshal(payload, &statement); err != nil {
+		if err := json.Unmarshal(decodedPayload, &statement); err != nil {
 			log.Printf("Warning: failed to parse statement for attestation %d: %v", i, err)
 			continue
 		}
