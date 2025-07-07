@@ -6,7 +6,7 @@ toolchain go1.24.4
 
 require (
 	github.com/cli/go-gh/v2 v2.11.2
-	github.com/google/go-github/v68 v68.0.0
+	github.com/google/go-github/v73 v73.0.0
 	github.com/sigstore/cosign/v2 v2.5.2
 	github.com/sigstore/sigstore-go v1.0.0
 	github.com/spf13/cobra v1.9.1
