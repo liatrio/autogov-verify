@@ -13,18 +13,18 @@ import (
 )
 
 const (
-	testFileName                = "test.txt"
-	testFileData                = "test data"
-	testCertIdentity            = "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main"
-	verifyCertIdentity          = "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main"
-	testCertIssuer              = "https://token.actions.githubusercontent.com"
-	testDigest                  = "sha256:abc123def456789012345678901234567890123456789012345678901234"
-	shortTestDigest             = "sha256:abc123"
-	validTestDigest             = "sha256:1234567890123456789012345678901234567890123456789012345678901234"
-	errMsgNilClient             = "nil client"
-	errMsgClientRequired        = "github client is required"
-	errMsgOrgRequired           = "github organization name is required"
-	errMsgArtifactRefRequired   = "artifact reference is required"
+	testFileName              = "test.txt"
+	testFileData              = "test data"
+	testCertIdentity          = "https://github.com/liatrio/autogov-verify/.github/workflows/test.yml@refs/heads/main"
+	verifyCertIdentity        = "https://github.com/liatrio/autogov-verify/.github/workflows/verify.yml@refs/heads/main"
+	testCertIssuer            = "https://token.actions.githubusercontent.com"
+	testDigest                = "sha256:abc123def456789012345678901234567890123456789012345678901234"
+	shortTestDigest           = "sha256:abc123"
+	validTestDigest           = "sha256:1234567890123456789012345678901234567890123456789012345678901234"
+	errMsgNilClient           = "nil client"
+	errMsgClientRequired      = "github client is required"
+	errMsgOrgRequired         = "github organization name is required"
+	errMsgArtifactRefRequired = "artifact reference is required"
 )
 
 func getGitHubToken(t *testing.T) string {
@@ -507,7 +507,7 @@ func TestHandleBlobVerification(t *testing.T) {
 				BlobPath:     validBlobPath,
 			},
 			wantErr: true,
-			errMsg:      errMsgClientRequired,
+			errMsg:  errMsgClientRequired,
 		},
 	}
 
