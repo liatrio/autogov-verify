@@ -230,9 +230,6 @@ func buildVSAInputs(result *VerificationResult, bundles []*bundle.Bundle) (attes
 		if !attestation.Verified {
 			continue
 		}
-		if attestation.Subject == nil {
-			return nil, nil, nil, nil, fmt.Errorf("verified attestation %d has no subject", i)
-		}
 		if i >= len(bundles) {
 			return nil, nil, nil, nil, fmt.Errorf("verified attestation %d has no matching bundle", i)
 		}
@@ -252,6 +249,14 @@ func buildVSAInputs(result *VerificationResult, bundles []*bundle.Bundle) (attes
 		attestationTypes = append(attestationTypes, attestation.Type)
 		bundlesForOPA = append(bundlesForOPA, opaBundle)
 		inputAttestations = append(inputAttestations, descriptor)
+
+		// in-toto subject names are optional. The verifier only exposes named
+		// subjects here, so an unnamed statement still participates in policy
+		// evaluation and input binding above. If none are named, VSA generation
+		// falls back to the artifact supplied to the offline command.
+		if attestation.Subject == nil {
+			continue
+		}
 
 		// creates VSA subject from attestation subject
 		subjectKey := attestation.Subject.Name
@@ -330,10 +335,11 @@ func fallbackVSASubjects(artifactPath, imageDigest string) ([]vsa.VSASubject, er
 		}}, nil
 	}
 	if imageDigest != "" {
+		algorithm, hexDigest := splitDigest(imageDigest)
 		return []vsa.VSASubject{{
 			URI: imageDigest,
 			Digest: map[string]string{
-				"sha256": imageDigest,
+				algorithm: hexDigest,
 			},
 		}}, nil
 	}
