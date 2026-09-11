@@ -1,6 +1,6 @@
-# VSA Metadata Structure
+# VSA metadata structure
 
-The generated VSA includes comprehensive metadata about the verification and policy evaluation:
+The generated VSA records verification and policy-evaluation metadata:
 
 ```json
 {
@@ -59,41 +59,43 @@ resource descriptor uses the exact DSSE payload bytes:
 }
 ```
 
-This additive binding applies to all predicate types handled by the offline
-path. The resource URI identifies one immutable statement; it is not the
-statement's `predicateType` and is not a schema URL. Predicate types continue
-to contribute separately to the VSA's verification facts. Offline VSA output
-remains unsigned. The standalone
-[agent-governance-evidence companion](https://github.com/liatrio/agent-governance-evidence)
-exercises this generic contract with a custom deployment statement and a
-standard test-result statement; AutoGov contains no companion-specific input
-binding code.
+This applies to every predicate type handled by the offline path. The resource
+URI identifies one immutable statement; it is not the statement's
+`predicateType` and it is not a schema URL. Predicate types still contribute
+separately to the VSA's verification facts. Offline VSA output remains
+unsigned. The standalone
+[`agent-governance-evidence`](https://github.com/liatrio/agent-governance-evidence)
+repository exercises this generic contract with a custom deployment statement
+and a standard test-result statement; `autogov` contains no
+companion-specific input-binding code.
 
-## Metadata Fields
+## Metadata fields
 
-- **`autogov.policy.evaluation`**: Core policy evaluation results including pass/fail status, violations, and policy details
-- **`autogov.policy.violation_summary`**: Violations grouped by policy type for quick identification of issues
-- **`autogov.policy.metrics`**: Compliance metrics and statistics for reporting
-- **`autogov.verification.details`**: Attestation verification results by type
+- **`autogov.policy.evaluation`**: Policy result, violations, and bundle details
+- **`autogov.policy.violation_summary`**: Violations grouped by policy type
+- **`autogov.policy.metrics`**: Counts and timing
+- **`autogov.verification.details`**: Verification results by predicate type
 
-## VSA Generation with Policy Evaluation
+## VSA generation with policy evaluation
 
-The tool generates SLSA v1.2 compliant Verification Summary Attestations (VSAs) with integrated OPA policy evaluation:
+The tool generates SLSA v1.2 Verification Summary Attestations (VSAs) and can
+include OPA policy evaluation:
 
 ```go
 // Verification workflow
 1. Collect attestations from GitHub
 2. Verify signatures using sigstore-go
 3. Evaluate OPA/Rego policies
-4. Generate comprehensive VSA
+4. Generate VSA
 5. Write VSA to output file
 ```
 
-**Enhanced VSA Features:**
+Key behavior:
 
-- **Comprehensive Validation**: Detailed field validation with structured error types
-- **SLSA Level Parsing**: Robust parsing of SLSA levels with track extraction (e.g., `SLSA_BUILD_LEVEL_3`)
-- **Multi-Format Digest Support**: Validation for multiple hash algorithms beyond SHA256
-- **Policy Integration**: OPA policy evaluation results included in VSA metadata
+- **Validation**: Structured field validation
+- **SLSA level parsing**: Track extraction such as `SLSA_BUILD_LEVEL_3`
+- **Multi-format digest support**: Validation for hashes beyond SHA-256
+- **Policy integration**: OPA results recorded in VSA metadata
 
-**SLSA v1.2 Compliance**: The tool validates against official SLSA Build track levels (L0-L3) as defined in the [SLSA v1.2 specification](https://slsa.dev/spec/v1.2/about)
+The tool validates against the official SLSA Build track levels (L0-L3) in the
+[SLSA v1.2 specification](https://slsa.dev/spec/v1.2/about).

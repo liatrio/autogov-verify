@@ -5,19 +5,17 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/liatrio/autogov/badge)](https://scorecard.dev/viewer/?uri=github.com/liatrio/autogov)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-You cannot trust a build artifact unless you can prove who built it and how. autogov closes that gap: it produces and verifies [SLSA](https://slsa.dev/spec/v1.2/about) [attestations](https://slsa.dev/attestation-model) (signed, machine-checkable statements about how an artifact was built), evaluates [OPA/Rego](https://www.openpolicyagent.org/docs/policy-language/) policy against them, and emits a pass/fail Verification Summary Attestation (VSA) — a signed record of what was checked and whether it passed — that you can gate releases on.
+You cannot trust a build artifact unless you can prove who built it and how. `autogov` produces and verifies [SLSA](https://slsa.dev/spec/v1.2/about) [attestations](https://slsa.dev/attestation-model), evaluates [OPA/Rego](https://www.openpolicyagent.org/docs/policy-language/) policy against them, and emits a pass/fail Verification Summary Attestation (VSA) that records what was checked and whether it passed.
 
-A unified CLI for attestation verification and release management. Supports [cosign](https://docs.sigstore.dev/cosign/signing/overview/)-based verification with SLSA v1.2 VSA (Verification Summary Attestation) support, integrated OPA policy evaluation, and a full release engine with changelog generation.
+It is a CLI for attestation verification and release management in GitHub-based supply chains.
 
 `v1.0.0` establishes the CLI's commands, flags, and output as its
 SemVer-governed public interface. Breaking changes to that interface require a
 major version bump.
 
-> **Note**: This tool supports attestation verification for container images (ghcr.io) and blobs, VSA generation, policy evaluation, and release management (plan, cut, publish) with conventional commit-based changelog generation.
-
 ## The autogov ecosystem
 
-**Start here.** autogov is the flagship CLI and the entry point to a four-repo ecosystem for software supply-chain governance. The other repos wrap this CLI for use in CI, so if you are new, read this README first.
+Start here. `autogov` is the CLI at the center of the four-repo autogov stack. The other repositories wrap this CLI for CI use.
 
 | Repo | Role |
 | --- | --- |
@@ -61,18 +59,18 @@ major version bump.
 
 ## Features
 
-- **Multi-Attestation Verification**: Supports all standard in-toto predicate types (SLSA, SBOM, vulnerability, custom)
-- **SLSA v1.2 VSA Generation**: Creates comprehensive Verification Summary Attestations
-- **OPA Policy Integration**: Evaluates Rego policies with results included in VSA metadata
-- **Signer Allowlist**: Enforces an approved set of signer certificate identities via `--cert-identity-list` (a URL or local file). Accepts the union of `--cert-identity` and the list (multiple signers per run), and fails closed when a configured list resolves to zero valid identities.
-- **Offline Verification**: Supports pre-downloaded attestation artifacts (verify container images by digest without pulling the image)
-- **Attestation Download**: Download attestations from GitHub for offline verification workflows
-- **Per-Attestation Trusted Root**: Selects the trusted root for each attestation from its signing certificate's Fulcio issuer — public-good Sigstore (`sigstore.dev`) or GitHub (`fulcio.githubapp.com`) — with `--trusted-root`/`--trusted-root-source` overrides
-- **VSA Validation**: Comprehensive field validation, structured error handling, and multi-format digest support
-- **Release Management**: Plan, cut, and publish releases with GitHub API-signed commits (SLSA v1.2 provenance)
-- **Changelog Generation**: Automatic changelog from conventional commits with markdown or JSON output
-- **Configuration Mutations**: Update version strings across JSON, YAML, and TOML files during releases
-- **Production Ready**: Comprehensive error handling, caching, and monitoring support
+- **Multi-attestation verification**: Supports standard in-toto predicate types, including SLSA, SBOM, vulnerability, and custom predicates
+- **SLSA v1.2 VSA generation**: Generates Verification Summary Attestations
+- **OPA policy integration**: Evaluates Rego policies and records the result in VSA metadata
+- **Signer allowlist**: Enforces an approved set of signer certificate identities via `--cert-identity-list` (a URL or local file). Accepts the union of `--cert-identity` and the list (multiple signers per run), and fails closed when a configured list resolves to zero valid identities.
+- **Offline verification**: Supports pre-downloaded attestation artifacts (verify container images by digest without pulling the image)
+- **Attestation download**: Download attestations from GitHub for offline verification workflows
+- **Per-attestation trusted root**: Selects the trusted root for each attestation from its signing certificate's Fulcio issuer — public-good Sigstore (`sigstore.dev`) or GitHub (`fulcio.githubapp.com`) — with `--trusted-root`/`--trusted-root-source` overrides
+- **VSA validation**: Validates VSA fields and supports multiple digest formats
+- **Release management**: Plan, cut, and publish releases with GitHub API-signed commits (SLSA v1.2 provenance)
+- **Changelog generation**: Automatic changelog from conventional commits with markdown or JSON output
+- **Configuration mutations**: Update version strings across JSON, YAML, and TOML files during releases
+- **Operational basics**: Error handling, caching, and monitoring support
 
 This tool verifies GitHub Artifact Attestations using the sigstore-go v1.2.1 API and supports attestations in the Sigstore bundle format used by [GitHub Artifact Attestations, npm Provenance, Homebrew Provenance, etc](https://blog.sigstore.dev/cosign-verify-bundles/).
 
@@ -436,7 +434,7 @@ The tool supports enforcing a signer allowlist via a certificate identity list:
 
 The tool supports generating SLSA v1.2 Verification Summary Attestations (VSAs) with enhanced validation and evaluating OPA policies:
 
-- `--generate-vsa`: Generate a VSA after successful verification with comprehensive validation
+- `--generate-vsa`: Generate a VSA after successful verification with field validation
 - `--vsa-output`: Path to save the generated VSA (e.g., `./verification-summary.json`)
 - `--policy-bundle-path`: Policy bundle source — local directory, `.tar.gz`, `http(s)://` URL, `oci://registry/repo:tag`, or `ghrel://owner/repo[@tag][?asset=bundle.tar.gz]`
 - `--policy-schemas-path`: JSON schemas source — local directory, `.tar.gz`, `http(s)://` URL, `oci://`, or `ghrel://owner/repo[@tag][?asset=schemas.tar.gz]`
@@ -965,7 +963,7 @@ The tool is organized into several key packages:
 - **`pkg/policy/`**: OPA integration for policy evaluation
 - **`pkg/release/`**: Release management (plan, cut, publish, changelog, version bumping)
 - **`pkg/root/`**: Trusted root management with dynamic fetching and fallback
-- **`pkg/vsa/`**: SLSA v1.2 VSA generation with comprehensive validation
+- **`pkg/vsa/`**: SLSA v1.2 VSA generation with field validation
 
 ### Predicate Type Standardization
 
