@@ -14,7 +14,7 @@ func TestAgentGovernanceDeploymentRegistryLockstep(t *testing.T) {
 		wantURI         = "https://autogov.dev/attestation/agent-governance-deployment/v0.1"
 		wantShortName   = "Agent Governance Deployment v0.1"
 		wantDescription = "Experimental companion-authored deployment evidence consumed through AutoGov's generic signature, policy, and VSA artifact interfaces"
-		wantSpec        = "https://github.com/liatrio/autogov/tree/main/agent-governance"
+		wantSpec        = "https://github.com/liatrio/agent-governance-evidence/releases/tag/v0.1.0-alpha.3"
 	)
 
 	if PredicateTypeAutogovAgentGovernanceDeployment != wantURI {
