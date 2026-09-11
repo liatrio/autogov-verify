@@ -117,7 +117,7 @@ const (
 	// companion. AutoGov verifies and displays this URI through its generic
 	// attestation path; predicate authoring and schema validation live outside the
 	// AutoGov binary. Incompatible or community-neutral semantics require a new URI.
-	// Spec: https://github.com/liatrio/autogov/tree/main/agent-governance
+	// Spec: https://github.com/liatrio/agent-governance-evidence/releases/tag/v0.1.0-alpha.3
 	PredicateTypeAutogovAgentGovernanceDeployment = "https://autogov.dev/attestation/agent-governance-deployment/v0.1"
 
 	// PredicateTypeSCAI represents SCAI (Software Supply Chain Attribute Integrity) report.
@@ -258,7 +258,7 @@ var PredicateTypeRegistry = map[string]PredicateTypeInfo{
 		URI:         PredicateTypeAutogovAgentGovernanceDeployment,
 		ShortName:   "Agent Governance Deployment v0.1",
 		Description: "Experimental companion-authored deployment evidence consumed through AutoGov's generic signature, policy, and VSA artifact interfaces",
-		Spec:        "https://github.com/liatrio/autogov/tree/main/agent-governance",
+		Spec:        "https://github.com/liatrio/agent-governance-evidence/releases/tag/v0.1.0-alpha.3",
 	},
 	PredicateTypeSCAI: {
 		URI:         PredicateTypeSCAI,
