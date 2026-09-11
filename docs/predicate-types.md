@@ -1,10 +1,13 @@
-# Predicate Type Standardization
+# Predicate type standardization
 
-The tool implements predicate type standardization following the [in-toto attestation framework](https://github.com/in-toto/attestation) and [SLSA specifications](https://slsa.dev/spec/v1.2/). This ensures consistent, human-readable display of attestation types during verification.
+The tool standardizes predicate-type display using the
+[in-toto attestation framework](https://github.com/in-toto/attestation) and
+[SLSA specifications](https://slsa.dev/spec/v1.2/). That keeps verification
+output readable and consistent.
 
 ## Supported Predicate Types
 
-The tool recognizes all standard in-toto attestation framework predicate types:
+The tool recognizes these standard predicate types:
 
 | Predicate Type | Short Name | Description |
 |----------------|------------|-------------|
@@ -17,7 +20,7 @@ The tool recognizes all standard in-toto attestation framework predicate types:
 | `https://autogov.dev/attestation/metadata/v1` | AutoGov Metadata | Custom autogov metadata with artifact/workflow/compliance details |
 | `https://autogov.dev/attestation/code-scan/v0.1` | AutoGov Code Scan | Custom autogov static-analysis (SARIF) summary by level and security-severity |
 | `https://autogov.dev/attestation/source-review/v0.2` | AutoGov Source Review | Custom autogov PR-approval evidence (approvers, distinct approvals, changes-requested) plus fail-closed SLSA Source-L3 continuity for the source revision |
-| `https://autogov.dev/attestation/agent-governance-deployment/v0.1` | Agent Governance Deployment v0.1 | Experimental deployment evidence authored and schema-validated by the standalone [`agent-governance-evidence`](https://github.com/liatrio/agent-governance-evidence) companion; AutoGov consumes it through generic signed artifacts, policy evaluation, and unsigned VSA output |
+| `https://autogov.dev/attestation/agent-governance-deployment/v0.1` | Agent Governance Deployment v0.1 | Experimental deployment evidence authored and schema-validated by the standalone [`agent-governance-evidence`](https://github.com/liatrio/agent-governance-evidence) companion; `autogov` consumes it through generic signed artifacts, policy evaluation, and unsigned VSA output |
 | `https://in-toto.io/attestation/scai/v0.3` | SCAI Report | Software supply chain attribute integrity assertions |
 | `https://in-toto.io/attestation/runtime-trace/v0.1` | Runtime Trace | Runtime traces of supply chain operations |
 | `https://in-toto.io/attestation/release/v0.1` | Release | Release version and artifact hash linkage |
@@ -25,7 +28,16 @@ The tool recognizes all standard in-toto attestation framework predicate types:
 | `https://in-toto.io/attestation/link/v0.3` | in-toto Link | Legacy in-toto 0.9 format (migration support) |
 | `https://cosign.sigstore.dev/attestation/v1` | Cosign Custom | Cosign generic custom attestation |
 
-> **Note:** Predicate types are URIs that *identify* an attestation's schema (the in-toto `predicateType` value); they are not necessarily browsable web pages. The `https://autogov.dev/attestation/...` entries are autogov's own custom predicate-type identifiers. AutoGov's generic verifier never dereferences or schema-validates the agent-governance body: it authenticates the signed Statement and passes the payload to the selected policy, which may enforce its own structure. The companion authoring command validates v0.1 in the standalone repository; see the canonical [agent-governance-evidence docs](https://github.com/liatrio/agent-governance-evidence/blob/main/docs/provenance.md) and immutable [`v0.1.0-alpha.3` release evidence](https://github.com/liatrio/agent-governance-evidence/releases/tag/v0.1.0-alpha.3).
+> **Note:** Predicate types are URIs that identify an attestation schema. They
+> are not necessarily browsable web pages. The
+> `https://autogov.dev/attestation/...` entries are `autogov`'s custom
+> predicate-type identifiers. `autogov` authenticates the signed Statement and
+> passes the payload to the selected policy; it does not dereference or
+> schema-validate the agent-governance body. The standalone repository validates
+> v0.1 during authoring. See the canonical
+> [agent-governance-evidence docs](https://github.com/liatrio/agent-governance-evidence/blob/main/docs/provenance.md)
+> and immutable
+> [`v0.1.0-alpha.3` release evidence](https://github.com/liatrio/agent-governance-evidence/releases/tag/v0.1.0-alpha.3).
 
 ## How It Works
 
@@ -38,7 +50,7 @@ During verification, the tool:
 
 ## Graceful Handling of Unknown Types
 
-If the tool encounters a predicate type not in the registry (e.g., custom or newly-introduced types):
+If the tool encounters a predicate type not in the registry:
 
 - Verification proceeds normally without errors
 - The type is displayed as `Unknown: <full-uri>`
@@ -60,4 +72,5 @@ Verifying attestation 3 (Unknown: https://example.com/custom/v1)...
 ✓ Attestation 3 verified successfully
 ```
 
-This approach ensures backward compatibility with all attestations while providing enhanced context for known types.
+This keeps verification compatible with unknown predicate types while still
+giving clearer names for the known ones.
